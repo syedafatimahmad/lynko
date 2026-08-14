@@ -1,28 +1,38 @@
 import React from 'react';
-import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import { useAppStore } from '../store/useAppStore';
+import { NavigationContainer } from '@react-navigation/native';
+import { useAuthStore } from '../store/authStore';
 
-import LoginScreen from '../screens/auth/LoginScreen';
-import TwoFactorAuthScreen from '../screens/auth/TwoFactorAuthScreen';
-import BottomTabNavigator from './BottomTabNavigator';
+import AppTabs from './AppTabs';
+import SignInScreen from '../screens/SignInScreen';
+import NewProjectScreen from '../screens/NewProjectScreen';
+import ChainOfCustodyScreen from '../screens/ChainOfCustodyScreen';
+import EditSamplesScreen from '../screens/EditSamplesScreen';
+import AdminDashboardScreen from '../screens/AdminDashboardScreen';
+import VerifyEmailScreen from '../screens/VerifyEmailScreen';
 
 const Stack = createNativeStackNavigator();
 
 export default function RootNavigator() {
-  const isAuthenticated = useAppStore((state) => state.isAuthenticated);
-  const is2FAVerified = useAppStore((state) => state.is2FAVerified);
+  const user = useAuthStore((state) => state.user);
 
   return (
     <NavigationContainer>
       <Stack.Navigator screenOptions={{ headerShown: false }}>
-        {!isAuthenticated || !is2FAVerified ? (
-          <>
-            <Stack.Screen name="Login" component={LoginScreen} />
-            <Stack.Screen name="TwoFactorAuth" component={TwoFactorAuthScreen} />
-          </>
+        {user ? (
+          user.emailVerified || user.email === 'admin@lynko.inc' ? ( // Bypass for dev admin
+            <>
+              <Stack.Screen name="AppTabs" component={AppTabs} />
+              <Stack.Screen name="NewProject" component={NewProjectScreen} options={{ presentation: 'modal' }} />
+              <Stack.Screen name="ChainOfCustody" component={ChainOfCustodyScreen} />
+              <Stack.Screen name="EditSamples" component={EditSamplesScreen} />
+              <Stack.Screen name="AdminDashboard" component={AdminDashboardScreen} />
+            </>
+          ) : (
+            <Stack.Screen name="VerifyEmail" component={VerifyEmailScreen} />
+          )
         ) : (
-          <Stack.Screen name="MainTabs" component={BottomTabNavigator} />
+          <Stack.Screen name="SignIn" component={SignInScreen} />
         )}
       </Stack.Navigator>
     </NavigationContainer>

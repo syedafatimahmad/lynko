@@ -1,146 +1,226 @@
-import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
-import { ChainOfCustodyReport } from '../store/useAppStore';
+import * as MailComposer from 'expo-mail-composer';
+import * as Print from 'expo-print';
+import { Platform } from 'react-native';
+import { CoCData, Project, SampleItem } from '../store/lynkoStore';
+import { lynkoLogoBase64 } from './lynkoLogoBase64';
 
-const generateHTML = (report: Partial<ChainOfCustodyReport>) => `
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <title>Chain of Custody Report</title>
-  <style>
-    body { font-family: 'Helvetica Neue', Arial, sans-serif; padding: 30px; color: #0F172A; background: #FFF; }
-    .header { text-align: center; border-bottom: 3px solid #03C1B6; padding-bottom: 15px; margin-bottom: 20px; }
-    .header h1 { color: #03C1B6; margin: 0; font-size: 26px; text-transform: uppercase; letter-spacing: 1px; }
-    .header p { margin: 5px 0 0; color: #64748B; font-size: 13px; font-weight: bold; }
-    
-    .section-header { font-size: 14px; font-weight: bold; background: #2C1B4D; color: #FFF; padding: 8px 12px; margin-top: 20px; border-radius: 4px; text-transform: uppercase; letter-spacing: 0.5px; }
-    
-    .grid { display: flex; flex-wrap: wrap; margin-top: 10px; gap: 10px; }
-    .grid-box { flex: 1; min-width: 45%; background: #F8FAFC; padding: 10px; border: 1px solid #E2E8F0; border-radius: 6px; }
-    .grid-box span { font-weight: bold; color: #475569; display: block; font-size: 11px; text-transform: uppercase; margin-bottom: 3px; }
-    .grid-box p { margin: 0; font-size: 13px; font-weight: 600; color: #0F172A; }
-
-    table { width: 100%; border-collapse: collapse; margin-top: 15px; font-size: 12px; }
-    th { background: #03C1B6; color: #FFF; padding: 10px; text-align: left; font-size: 12px; text-transform: uppercase; }
-    td { border-bottom: 1px solid #E2E8F0; padding: 10px; vertical-align: top; }
-    tr:nth-child(even) { background: #F8FAFC; }
-    .sample-img { max-width: 90px; max-height: 70px; border-radius: 6px; object-fit: cover; border: 1px solid #CBD5E1; }
-
-    .signature-grid { display: flex; justify-content: space-between; margin-top: 30px; }
-    .sig-card { width: 48%; border: 1px solid #CBD5E1; padding: 12px; border-radius: 6px; background: #FAF5FF; }
-    .sig-card h4 { margin: 0 0 10px; font-size: 12px; color: #2C1B4D; text-transform: uppercase; }
-    .sig-img { width: 100%; height: 75px; object-fit: contain; border-bottom: 1px solid #0F172A; }
-
-    .footer { margin-top: 40px; font-size: 11px; text-align: center; color: #94A3B8; border-top: 1px solid #E2E8F0; padding-top: 15px; }
-  </style>
-</head>
-<body>
-
-  <!-- HEADER -->
-  <div class="header">
-    <h1>Lynko Chain of Custody</h1>
-    <p>Official Environmental Laboratory Sample Submission Document</p>
-  </div>
-
-  <!-- SECTION 1: PROJECT & PROPERTY DETAILS -->
-  <div class="section-header">Section 1: Project & Property Header</div>
-  <div class="grid">
-    <div class="grid-box"><span>PO # / Document ID</span><p>${report.poNumber || report.id || 'PO-99482'}</p></div>
-    <div class="grid-box"><span>Sampling Date & Time</span><p>${report.samplingDate || '01/27/2026'} ${report.samplingTime || '09:49 AM'}</p></div>
-    <div class="grid-box" style="flex: 100%;"><span>Property Address</span><p>${report.address || 'N/A'}</p></div>
-    <div class="grid-box" style="flex: 100%;"><span>Project Description</span><p>${report.description || 'N/A'}</p></div>
-  </div>
-
-  <!-- SECTION 2: CONTACT & ACCOUNT INFO -->
-  <div class="section-header">Section 2: Contact & Account Info</div>
-  <div class="grid">
-    <div class="grid-box"><span>Account Name</span><p>${report.accountName || 'Alpha Environmental'}</p></div>
-    <div class="grid-box"><span>Contact / Sampled By</span><p>${report.sampledBy || report.contactName || 'Ali Saleh'}</p></div>
-    <div class="grid-box"><span>Contact Phone</span><p>${report.phone || '214-994-9874'}</p></div>
-    <div class="grid-box"><span>Zipcode</span><p>${report.zipcode || '75208'}</p></div>
-  </div>
-
-  ${report.specialInstructions ? `
-  <!-- SECTION 3: SPECIAL ANALYST INSTRUCTIONS -->
-  <div class="section-header">Section 3: Special Analyst Instructions</div>
-  <p style="font-size: 13px; margin: 10px; color: #334155; line-height: 1.5; background: #FFFBEB; padding: 10px; border-left: 4px solid #F59E0B; border-radius: 4px;">
-    ${report.specialInstructions}
-  </p>
-  ` : ''}
-
-  <!-- SECTION 4: SAMPLE MANIFEST TABLE -->
-  <div class="section-header">Section 4: Sample Manifest (${report.samples?.length || 0} Logged Samples)</div>
-  <table>
-    <thead>
-      <tr>
-        <th>#</th>
-        <th>Sample ID</th>
-        <th>Analysis 1</th>
-        <th>Analysis 2</th>
-        <th>Description</th>
-        <th>Measurement</th>
-        <th>Photo</th>
-      </tr>
-    </thead>
-    <tbody>
-      ${(report.samples || []).map((s, index) => `
-        <tr>
-          <td><strong>${index + 1}</strong></td>
-          <td><strong style="color: #03C1B6;">${s.sampleId}</strong></td>
-          <td>${s.analysis1 ? '✓ ON' : 'OFF'}</td>
-          <td>${s.analysis2 ? '✓ ON' : 'OFF'}</td>
-          <td>${s.description}</td>
-          <td>${s.measurement} ${s.measurementUnit}</td>
-          <td>${s.photoUri ? `<img src="${s.photoUri}" class="sample-img" />` : 'No Photo'}</td>
-        </tr>
-      `).join('')}
-    </tbody>
-  </table>
-
-  <!-- SECTION 5: CUSTODY TRANSFER SIGNATURES -->
-  <div class="section-header">Section 5: Custody Transfer Signatures</div>
-  <div class="signature-grid">
-    <div class="sig-card">
-      <h4>Relinquished By (Field Inspector)</h4>
-      ${report.courierSignature ? `<img src="${report.courierSignature}" class="sig-img" />` : '<p style="height: 60px; color: #94A3B8;">Sign-Off Completed</p>'}
-      <p style="font-size: 11px; margin: 6px 0 0; color: #475569;">Sign-Off Date: ${report.samplingDate || '01/27/2026'}</p>
-    </div>
-    <div class="sig-card" style="background: #F8FAFC;">
-      <h4>Received By (Laboratory Intake)</h4>
-      <div style="height: 75px; border-bottom: 1px dashed #CBD5E1;"></div>
-      <p style="font-size: 11px; margin: 6px 0 0; color: #94A3B8;">Date & Time Received: [ Lab Use Only ]</p>
-    </div>
-  </div>
-
-  <div class="footer">
-    Document ID: ${report.id || 'COC-TEMP'} &bull; Generated via Lynko Environmental Mobile App &bull; &copy; 2026
-  </div>
-
-</body>
-</html>
-`;
-
-export const generatePDFReport = async (report: Partial<ChainOfCustodyReport>) => {
+export const generatePDF = async (project: Project | null, cocData: CoCData, samples: SampleItem[]) => {
   try {
-    const html = generateHTML(report);
+    const signatureHtml = cocData.inspectorSignature 
+      ? `<img src="${cocData.inspectorSignature}" style="max-height: 40px; margin-left: 10px;"/>`
+      : '';
+      
+    const relinquishedSigHtml = cocData.relinquishedBySignature 
+      ? `<img src="${cocData.relinquishedBySignature}" style="max-height: 40px; margin-left: 10px;"/>`
+      : '';
+
+    let rowsHtml = '';
+    const maxRows = 15;
+    for (let i = 0; i < maxRows; i++) {
+      const s = samples[i];
+      if (s) {
+        rowsHtml += `
+          <tr>
+            <td class="text-center">${s.name.replace('Sample ID ', '')}</td>
+            <td>${s.description || ''}${s.notes ? `<br><i>Note: ${s.notes}</i>` : ''}</td>
+            <td class="text-center">${s.property || ''}</td>
+            <td class="text-center">${s.measurement || ''}</td>
+            <td class="text-center bold">${s.analysis1Enabled ? 'X' : ''}</td>
+            <td class="text-center bold">${s.analysis2Enabled ? 'X' : ''}</td>
+          </tr>
+        `;
+      } else {
+        rowsHtml += `
+          <tr>
+            <td>&nbsp;</td>
+            <td></td>
+            <td></td>
+            <td></td>
+            <td></td>
+            <td></td>
+          </tr>
+        `;
+      }
+    }
+
+    const html = `
+      <html>
+        <head>
+          <style>
+            body {
+              font-family: Arial, sans-serif;
+              font-size: 11px;
+              margin: 0;
+              padding: 10px;
+            }
+            table {
+              width: 100%;
+              border-collapse: collapse;
+              border: 1px solid black;
+            }
+            th, td {
+              border: 1px solid black;
+              padding: 4px 6px;
+              vertical-align: top;
+            }
+            .bg-beige {
+              background-color: #efece1;
+              font-weight: bold;
+              width: 15%;
+            }
+            .bg-teal {
+              background-color: #bde4e4;
+              font-weight: bold;
+              text-align: center;
+              font-size: 12px;
+              padding: 6px;
+            }
+            .text-center {
+              text-align: center;
+            }
+            .bold {
+              font-weight: bold;
+            }
+            .header-logo-text {
+              font-size: 20px;
+              font-weight: bold;
+              color: #4CAF50;
+              margin: 0;
+              padding: 0;
+            }
+            .moldlab-logo-text {
+              font-size: 24px;
+              font-weight: bold;
+              color: #8B4513;
+              margin: 0;
+              padding: 0;
+            }
+          </style>
+        </head>
+        <body>
+          <!-- Header Logos -->
+          <table style="margin-bottom: -1px;">
+            <tr>
+              <td class="bg-beige">Company name</td>
+              <td style="width: 35%;">
+                <img src="${lynkoLogoBase64}" style="max-height: 50px;" /><br>
+                <a href="https://alphaenvironmental.us/">https://alphaenvironmental.us/</a><br>
+                info@alphaenvironmental.us<br>
+                214-994-9874
+              </td>
+              <td colspan="4" style="text-align: right; padding-right: 15px;">
+                <!-- Blank Top Right -->
+              </td>
+            </tr>
+          </table>
+
+          <!-- Project & Contact Info (App Data) -->
+          <table style="margin-bottom: -1px;">
+            <tr>
+              <td class="bg-beige">Project Name</td>
+              <td style="width: 35%;">${cocData.description || ''}</td>
+              <td class="bg-beige">Account Info</td>
+              <td>${cocData.accountInfo || ''}</td>
+            </tr>
+            <tr>
+              <td class="bg-beige">Project Address</td>
+              <td>${cocData.zipCode || ''}</td>
+              <td class="bg-beige">Contact Name</td>
+              <td>${cocData.contactName || ''}</td>
+            </tr>
+            <tr>
+              <td class="bg-beige">Project # (PO)</td>
+              <td>${cocData.poNumber || ''}</td>
+              <td class="bg-beige">Contact Address</td>
+              <td>${cocData.contactAddress || ''}</td>
+            </tr>
+            <tr>
+              <td class="bg-beige">Sample Date</td>
+              <td>${cocData.samplingDate || ''}</td>
+              <td class="bg-beige">Contact Phone</td>
+              <td colspan="2">${cocData.contactPhone || ''}</td>
+            </tr>
+            <tr>
+              <td class="bg-beige">Sampled By</td>
+              <td>${cocData.sampledBy || ''}</td>
+              <td colspan="3"></td>
+            </tr>
+          </table>
+
+          <!-- Teal Section Header -->
+          <table>
+            <tr>
+              <td colspan="6" class="bg-teal">SAMPLES LOG</td>
+            </tr>
+            <tr>
+              <td class="bg-beige text-center" style="width: 10%;">Sample ID</td>
+              <td class="bg-beige text-center" style="width: 40%;">Description & Notes</td>
+              <td class="bg-beige text-center" style="width: 15%;">Property</td>
+              <td class="bg-beige text-center" style="width: 15%;">Measurement</td>
+              <td class="bg-beige text-center" style="width: 10%;">Analysis 1</td>
+              <td class="bg-beige text-center" style="width: 10%;">Analysis 2</td>
+            </tr>
+            ${rowsHtml}
+          </table>
+
+          <!-- Footer Section -->
+          <table style="margin-top: -1px;">
+            <tr>
+              <td class="bg-beige" style="width: 50%; height: 60px;">
+                Special Instructions:<br>
+                <span style="font-weight: normal;">${cocData.specialInstructions || ''}</span>
+              </td>
+              <td style="width: 50%;">
+                Inspector Signature:<br>
+                ${signatureHtml}<br>
+                <div style="text-align: right; margin-top: -15px;">
+                  Time: <u>&nbsp;${cocData.samplingTime || '__________'}&nbsp;</u>
+                </div>
+              </td>
+            </tr>
+            <tr>
+              <td class="bg-beige" style="height: 60px;">
+                Relinquished By Signature:<br>
+                ${relinquishedSigHtml}
+              </td>
+              <td style="padding: 10px;">
+                By signing this document, you certify that these samples were not tampered with while under your care.
+              </td>
+            </tr>
+          </table>
+          
+          <div style="text-align: right; margin-top: 5px; font-size: 10px;">
+            PAGE 1 of 1
+          </div>
+        </body>
+      </html>
+    `;
+
+    if (Platform.OS === 'web') {
+      const printWindow = window.open('', '_blank');
+      if (printWindow) {
+        printWindow.document.write(html);
+        printWindow.document.close();
+        printWindow.focus();
+        setTimeout(() => {
+          printWindow.print();
+        }, 500);
+      } else {
+        alert('Please allow popups for this site to preview the PDF.');
+      }
+      return null;
+    }
+
     const { uri } = await Print.printToFileAsync({
       html,
       base64: false,
     });
-    return uri;
-  } catch (error) {
-    console.error('Failed to generate PDF:', error);
-    throw error;
-  }
-};
 
-export const sharePDFReport = async (fileUri: string) => {
-  if (await Sharing.isAvailableAsync()) {
-    await Sharing.shareAsync(fileUri, {
-      UTI: '.pdf',
-      mimeType: 'application/pdf',
-      dialogTitle: 'Share Chain of Custody PDF',
-    });
+    return uri;
+  } catch (error: any) {
+    console.error('Error generating PDF:', error);
+    alert('Failed to generate PDF. Error: ' + (error.message || error.toString()));
+    return null;
   }
 };
