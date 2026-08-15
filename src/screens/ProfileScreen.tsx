@@ -31,15 +31,6 @@ export default function ProfileScreen({ navigation }: any) {
       <Text style={styles.label}>Logged in as:</Text>
       <Text style={styles.email}>{user?.email || 'Unknown User'}</Text>
 
-      {userData?.role === 'admin' && (
-        <TouchableOpacity 
-          style={styles.adminButton} 
-          onPress={() => navigation.navigate('AdminDashboard')}
-        >
-          <Ionicons name="shield-checkmark" size={20} color="#fff" />
-          <Text style={styles.adminButtonText}>Admin Dashboard</Text>
-        </TouchableOpacity>
-      )}
       
       <TouchableOpacity style={styles.button} onPress={handleSignOut}>
         <Ionicons name="log-out-outline" size={20} color="#fff" />

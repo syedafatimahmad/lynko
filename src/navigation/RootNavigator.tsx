@@ -8,7 +8,6 @@ import SignInScreen from '../screens/SignInScreen';
 import NewProjectScreen from '../screens/NewProjectScreen';
 import ChainOfCustodyScreen from '../screens/ChainOfCustodyScreen';
 import EditSamplesScreen from '../screens/EditSamplesScreen';
-import AdminDashboardScreen from '../screens/AdminDashboardScreen';
 import VerifyEmailScreen from '../screens/VerifyEmailScreen';
 
 const Stack = createNativeStackNavigator();
@@ -26,7 +25,6 @@ export default function RootNavigator() {
               <Stack.Screen name="NewProject" component={NewProjectScreen} options={{ presentation: 'modal' }} />
               <Stack.Screen name="ChainOfCustody" component={ChainOfCustodyScreen} />
               <Stack.Screen name="EditSamples" component={EditSamplesScreen} />
-              <Stack.Screen name="AdminDashboard" component={AdminDashboardScreen} />
             </>
           ) : (
             <Stack.Screen name="VerifyEmail" component={VerifyEmailScreen} />
