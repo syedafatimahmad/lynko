@@ -160,16 +160,6 @@ export default function SignInScreen() {
                 <Text style={styles.buttonText}>{isRegistering ? 'Register' : 'Sign In'}</Text>
               )}
             </TouchableOpacity>
-
-            <TouchableOpacity 
-              style={styles.devButton}
-              onPress={() => {
-                setUser({ email: 'admin@lynko.inc', uid: 'dev-admin-123' });
-                setUserData({ role: 'admin', email: 'admin@lynko.inc', username: 'SuperAdmin' });
-              }}
-            >
-              <Text style={styles.devButtonText}>[DEV MODE] Bypass Login as Admin</Text>
-            </TouchableOpacity>
           </View>
         </View>
       </View>

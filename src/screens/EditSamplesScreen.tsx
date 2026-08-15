@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { View, Text, StyleSheet, FlatList, TouchableOpacity, Image, Alert, SafeAreaView, Platform, Switch, TextInput } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { useLynkoStore, SampleItem } from '../store/lynkoStore';
@@ -10,6 +10,11 @@ export default function EditSamplesScreen({ navigation }: any) {
   const addSample = useLynkoStore((state) => state.addSample);
   const deleteSample = useLynkoStore((state) => state.deleteSample);
   const updateSample = useLynkoStore((state) => state.updateSample);
+  const [expandedNotes, setExpandedNotes] = useState<{ [key: string]: boolean }>({});
+
+  const toggleNotes = (id: string) => {
+    setExpandedNotes(prev => ({ ...prev, [id]: !prev[id] }));
+  };
 
   const handleAdd = () => {
     addSample({
@@ -62,69 +67,99 @@ export default function EditSamplesScreen({ navigation }: any) {
           showsVerticalScrollIndicator={false}
           contentContainerStyle={styles.listContent}
           ListEmptyComponent={<Text style={styles.empty}>No samples added yet.</Text>}
-          renderItem={({ item }) => (
-            <View style={styles.card}>
-              <View style={styles.cardHeader}>
-                <Text style={styles.sampleName}>{item.name}</Text>
-                <TouchableOpacity onPress={() => deleteSample(item.id)}>
-                  <Ionicons name="trash-outline" size={24} color={colors.error} />
-                </TouchableOpacity>
-              </View>
-
-              <View style={styles.switchRow}>
-                <Text style={styles.switchLabel}>Analysis 1</Text>
-                <Switch 
-                  value={item.analysis1Enabled} 
-                  onValueChange={(val) => updateSample(item.id, { analysis1Enabled: val })} 
-                  trackColor={{ true: colors.primaryContainer }} 
-                />
-              </View>
-              <View style={[styles.switchRow, { marginBottom: 12 }]}>
-                <Text style={styles.switchLabel}>Analysis 2</Text>
-                <Switch 
-                  value={item.analysis2Enabled} 
-                  onValueChange={(val) => updateSample(item.id, { analysis2Enabled: val })} 
-                  trackColor={{ true: colors.primaryContainer }} 
-                />
-              </View>
-
-              <View style={styles.inputGroup}>
-                <Text style={styles.label}>Description</Text>
-                <TextInput 
-                  style={styles.input} 
-                  placeholder="Bedroom Drywall"
-                  value={item.description}
-                  onChangeText={(val) => updateSample(item.id, { description: val })}
-                />
-              </View>
-
-              <View style={styles.row}>
-                <View style={[styles.inputGroup, { flex: 1, marginRight: 6 }]}>
-                  <Text style={styles.label}>Property</Text>
-                  <View style={styles.dataBox}><Text style={styles.dataText}>{item.property}</Text></View>
+          renderItem={({ item }) => {
+            const showNotes = expandedNotes[item.id] || (item.notes && item.notes.length > 0);
+            return (
+              <View style={styles.card}>
+                <View style={styles.cardHeader}>
+                  <Text style={styles.sampleName}>{item.name}</Text>
+                  <TouchableOpacity onPress={() => deleteSample(item.id)}>
+                    <Ionicons name="trash-outline" size={24} color={colors.error} />
+                  </TouchableOpacity>
                 </View>
-                <View style={[styles.inputGroup, { flex: 1, marginLeft: 6 }]}>
-                  <Text style={styles.label}>Measurement</Text>
-                  <View style={styles.dataBox}><Text style={styles.dataText}>{item.measurement}</Text></View>
+
+                <View style={styles.switchRow}>
+                  <Text style={styles.switchLabel}>Analysis 1</Text>
+                  <Switch 
+                    value={item.analysis1Enabled} 
+                    onValueChange={(val) => updateSample(item.id, { analysis1Enabled: val })} 
+                    trackColor={{ true: colors.primaryContainer }} 
+                  />
+                </View>
+                <View style={[styles.switchRow, { marginBottom: 12 }]}>
+                  <Text style={styles.switchLabel}>Analysis 2</Text>
+                  <Switch 
+                    value={item.analysis2Enabled} 
+                    onValueChange={(val) => updateSample(item.id, { analysis2Enabled: val })} 
+                    trackColor={{ true: colors.primaryContainer }} 
+                  />
+                </View>
+
+                <View style={styles.inputGroup}>
+                  <Text style={styles.label}>Description</Text>
+                  <TextInput 
+                    style={styles.input} 
+                    placeholder="e.g. Bedroom Drywall"
+                    placeholderTextColor={colors.outline}
+                    value={item.description}
+                    onChangeText={(val) => updateSample(item.id, { description: val })}
+                  />
+                </View>
+
+                <View style={styles.row}>
+                  <View style={[styles.inputGroup, { flex: 1, marginRight: 6 }]}>
+                    <Text style={styles.label}>Property</Text>
+                    <TextInput 
+                      style={styles.input} 
+                      placeholder="e.g. Bulk / Air"
+                      placeholderTextColor={colors.outline}
+                      value={item.property}
+                      onChangeText={(val) => updateSample(item.id, { property: val })}
+                    />
+                  </View>
+                  <View style={[styles.inputGroup, { flex: 1, marginLeft: 6 }]}>
+                    <Text style={styles.label}>Measurement</Text>
+                    <TextInput 
+                      style={styles.input} 
+                      placeholder="e.g. 15 L / 100 sq ft"
+                      placeholderTextColor={colors.outline}
+                      value={item.measurement}
+                      onChangeText={(val) => updateSample(item.id, { measurement: val })}
+                    />
+                  </View>
+                </View>
+
+                {showNotes && (
+                  <View style={[styles.inputGroup, { marginTop: 4 }]}>
+                    <Text style={styles.label}>Notes</Text>
+                    <TextInput 
+                      style={[styles.input, styles.notesInput]} 
+                      placeholder="Add inspection notes, location details, etc."
+                      placeholderTextColor={colors.outline}
+                      value={item.notes}
+                      onChangeText={(val) => updateSample(item.id, { notes: val })}
+                      multiline
+                    />
+                  </View>
+                )}
+
+                {item.photoUri && (
+                  <Image source={{ uri: item.photoUri }} style={styles.sampleImage} />
+                )}
+
+                <View style={styles.cardFooter}>
+                  <TouchableOpacity style={styles.footerAction} onPress={() => toggleNotes(item.id)}>
+                    <Ionicons name={showNotes ? "document-text" : "add"} size={18} color={colors.primaryContainer} style={{marginRight: 4}} />
+                    <Text style={styles.footerActionText}>{showNotes ? 'Hide notes' : 'Add notes'}</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={styles.footerAction} onPress={() => handleAttachPhoto(item.id)}>
+                    <Ionicons name="camera-outline" size={18} color={colors.primaryContainer} style={{marginRight: 4}} />
+                    <Text style={styles.footerActionText}>{item.photoUri ? 'Retake Photo' : 'Attach Photo'}</Text>
+                  </TouchableOpacity>
                 </View>
               </View>
-
-              {item.photoUri && (
-                <Image source={{ uri: item.photoUri }} style={styles.sampleImage} />
-              )}
-
-              <View style={styles.cardFooter}>
-                <TouchableOpacity style={styles.footerAction}>
-                  <Ionicons name="add" size={18} color={colors.primaryContainer} style={{marginRight: 4}} />
-                  <Text style={styles.footerActionText}>Add notes</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.footerAction} onPress={() => handleAttachPhoto(item.id)}>
-                  <Ionicons name="camera-outline" size={18} color={colors.primaryContainer} style={{marginRight: 4}} />
-                  <Text style={styles.footerActionText}>{item.photoUri ? 'Retake Photo' : 'Attach Photo'}</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          )}
+            );
+          }}
         />
       </View>
 
@@ -157,10 +192,9 @@ const styles = StyleSheet.create({
   switchLabel: { fontSize: 14, color: colors.onSurface },
   inputGroup: { marginBottom: 12 },
   label: { fontSize: 13, fontWeight: '600', color: colors.onSurfaceVariant, marginBottom: 4 },
-  input: { borderWidth: 1, borderColor: colors.outlineVariant, borderRadius: 4, paddingHorizontal: 12, paddingVertical: 8, fontSize: 14, color: colors.onSurface },
+  input: { borderWidth: 1, borderColor: colors.outlineVariant, borderRadius: 4, paddingHorizontal: 12, paddingVertical: 8, fontSize: 14, color: colors.onSurface, backgroundColor: colors.surfaceContainerLowest },
+  notesInput: { minHeight: 60, textAlignVertical: 'top' },
   row: { flexDirection: 'row' },
-  dataBox: { backgroundColor: colors.surface, borderRadius: 4, paddingHorizontal: 12, paddingVertical: 8 },
-  dataText: { fontWeight: '500', fontSize: 14, color: colors.onSurface },
   sampleImage: { width: '100%', height: 150, borderRadius: 8, resizeMode: 'cover', marginTop: 8, marginBottom: 12 },
   cardFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderTopWidth: 1, borderTopColor: colors.outlineVariant, paddingTop: 12, marginTop: 4 },
   footerAction: { flexDirection: 'row', alignItems: 'center' },
