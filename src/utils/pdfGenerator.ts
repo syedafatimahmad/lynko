@@ -5,6 +5,16 @@ import { Platform } from 'react-native';
 import { CoCData, Project, SampleItem } from '../store/lynkoStore';
 import { lynkoLogoBase64 } from './lynkoLogoBase64';
 
+const escapeHtml = (unsafe: string) => {
+  if (!unsafe) return '';
+  return unsafe
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+};
+
 export const generatePDF = async (project: Project | null, cocData: CoCData, samples: SampleItem[]) => {
   try {
     const signatureHtml = cocData.inspectorSignature 
@@ -15,33 +25,160 @@ export const generatePDF = async (project: Project | null, cocData: CoCData, sam
       ? `<img src="${cocData.relinquishedBySignature}" style="max-height: 40px; margin-left: 10px;"/>`
       : '';
 
-    let rowsHtml = '';
+    const safeCoc = {
+      poNumber: escapeHtml(cocData.poNumber),
+      description: escapeHtml(cocData.description),
+      zipCode: escapeHtml(cocData.zipCode),
+      samplingDate: escapeHtml(cocData.samplingDate),
+      samplingTime: escapeHtml(cocData.samplingTime),
+      contactName: escapeHtml(cocData.contactName),
+      contactAddress: escapeHtml(cocData.contactAddress),
+      contactPhone: escapeHtml(cocData.contactPhone),
+      sampledBy: escapeHtml(cocData.sampledBy),
+      accountInfo: escapeHtml(cocData.accountInfo),
+      specialInstructions: escapeHtml(cocData.specialInstructions),
+    };
+
     const maxRows = 15;
-    for (let i = 0; i < maxRows; i++) {
-      const s = samples[i];
-      if (s) {
-        rowsHtml += `
-          <tr>
-            <td class="text-center">${s.name.replace('Sample ID ', '')}</td>
-            <td>${s.description || ''}${s.notes ? `<br><i>Note: ${s.notes}</i>` : ''}</td>
-            <td class="text-center">${s.property || ''}</td>
-            <td class="text-center">${s.measurement || ''}</td>
-            <td class="text-center bold">${s.analysis1Enabled ? 'X' : ''}</td>
-            <td class="text-center bold">${s.analysis2Enabled ? 'X' : ''}</td>
-          </tr>
-        `;
-      } else {
-        rowsHtml += `
-          <tr>
-            <td>&nbsp;</td>
-            <td></td>
-            <td></td>
-            <td></td>
-            <td></td>
-            <td></td>
-          </tr>
-        `;
+    const totalPages = Math.max(1, Math.ceil(samples.length / maxRows));
+
+    let pagesHtml = '';
+
+    for (let page = 0; page < totalPages; page++) {
+      const startIndex = page * maxRows;
+      let rowsHtml = '';
+      
+      for (let i = 0; i < maxRows; i++) {
+        const s = samples[startIndex + i];
+        if (s) {
+          const safeName = escapeHtml(s.name.replace('Sample ID ', ''));
+          const safeDesc = escapeHtml(s.description || '');
+          const safeNotes = escapeHtml(s.notes || '');
+          const safeProp = escapeHtml(s.property || '');
+          const safeMeas = escapeHtml(s.measurement || '');
+          
+          rowsHtml += `
+            <tr>
+              <td class="text-center">${safeName}</td>
+              <td>${safeDesc}${safeNotes ? `<br><i>Note: ${safeNotes}</i>` : ''}</td>
+              <td class="text-center">${safeProp}</td>
+              <td class="text-center">${safeMeas}</td>
+              <td class="text-center bold">${s.analysis1Enabled ? 'X' : ''}</td>
+              <td class="text-center bold">${s.analysis2Enabled ? 'X' : ''}</td>
+            </tr>
+          `;
+        } else {
+          rowsHtml += `
+            <tr>
+              <td>&nbsp;</td>
+              <td></td>
+              <td></td>
+              <td></td>
+              <td></td>
+              <td></td>
+            </tr>
+          `;
+        }
       }
+
+      pagesHtml += `
+        <div class="page" ${page < totalPages - 1 ? 'style="page-break-after: always;"' : ''}>
+          <!-- Header Logos -->
+          <table style="margin-bottom: -1px;">
+            <tr>
+              <td class="bg-beige">Company name</td>
+              <td style="width: 35%;">
+                <img src="${lynkoLogoBase64}" style="max-height: 50px;" /><br>
+                <a href="https://alphaenvironmental.us/">https://alphaenvironmental.us/</a><br>
+                info@alphaenvironmental.us<br>
+                214-994-9874
+              </td>
+              <td colspan="4" style="text-align: right; padding-right: 15px;">
+                <!-- Blank Top Right -->
+              </td>
+            </tr>
+          </table>
+
+          <!-- Project & Contact Info (App Data) -->
+          <table style="margin-bottom: -1px;">
+            <tr>
+              <td class="bg-beige">Project Name</td>
+              <td style="width: 35%;">${safeCoc.description}</td>
+              <td class="bg-beige">Account Info</td>
+              <td>${safeCoc.accountInfo}</td>
+            </tr>
+            <tr>
+              <td class="bg-beige">Project Address</td>
+              <td>${safeCoc.zipCode}</td>
+              <td class="bg-beige">Contact Name</td>
+              <td>${safeCoc.contactName}</td>
+            </tr>
+            <tr>
+              <td class="bg-beige">Project # (PO)</td>
+              <td>${safeCoc.poNumber}</td>
+              <td class="bg-beige">Contact Address</td>
+              <td>${safeCoc.contactAddress}</td>
+            </tr>
+            <tr>
+              <td class="bg-beige">Sample Date</td>
+              <td>${safeCoc.samplingDate}</td>
+              <td class="bg-beige">Contact Phone</td>
+              <td colspan="2">${safeCoc.contactPhone}</td>
+            </tr>
+            <tr>
+              <td class="bg-beige">Sampled By</td>
+              <td>${safeCoc.sampledBy}</td>
+              <td colspan="3"></td>
+            </tr>
+          </table>
+
+          <!-- Teal Section Header -->
+          <table>
+            <tr>
+              <td colspan="6" class="bg-teal">SAMPLES LOG</td>
+            </tr>
+            <tr>
+              <td class="bg-beige text-center" style="width: 10%;">Sample ID</td>
+              <td class="bg-beige text-center" style="width: 40%;">Description & Notes</td>
+              <td class="bg-beige text-center" style="width: 15%;">Property</td>
+              <td class="bg-beige text-center" style="width: 15%;">Measurement</td>
+              <td class="bg-beige text-center" style="width: 10%;">Analysis 1</td>
+              <td class="bg-beige text-center" style="width: 10%;">Analysis 2</td>
+            </tr>
+            ${rowsHtml}
+          </table>
+
+          <!-- Footer Section -->
+          <table style="margin-top: -1px;">
+            <tr>
+              <td class="bg-beige" style="width: 50%; height: 60px;">
+                Special Instructions:<br>
+                <span style="font-weight: normal;">${safeCoc.specialInstructions}</span>
+              </td>
+              <td style="width: 50%;">
+                Inspector Signature:<br>
+                ${signatureHtml}<br>
+                <div style="text-align: right; margin-top: -15px;">
+                  Time: <u>&nbsp;${safeCoc.samplingTime || '__________'}&nbsp;</u>
+                </div>
+              </td>
+            </tr>
+            <tr>
+              <td class="bg-beige" style="height: 60px;">
+                Relinquished By Signature:<br>
+                ${relinquishedSigHtml}
+              </td>
+              <td style="padding: 10px;">
+                By signing this document, you certify that these samples were not tampered with while under your care.
+              </td>
+            </tr>
+          </table>
+          
+          <div style="text-align: right; margin-top: 5px; font-size: 10px;">
+            PAGE ${page + 1} of ${totalPages}
+          </div>
+        </div>
+      `;
     }
 
     const html = `
@@ -82,117 +219,10 @@ export const generatePDF = async (project: Project | null, cocData: CoCData, sam
             .bold {
               font-weight: bold;
             }
-            .header-logo-text {
-              font-size: 20px;
-              font-weight: bold;
-              color: #4CAF50;
-              margin: 0;
-              padding: 0;
-            }
-            .moldlab-logo-text {
-              font-size: 24px;
-              font-weight: bold;
-              color: #8B4513;
-              margin: 0;
-              padding: 0;
-            }
           </style>
         </head>
         <body>
-          <!-- Header Logos -->
-          <table style="margin-bottom: -1px;">
-            <tr>
-              <td class="bg-beige">Company name</td>
-              <td style="width: 35%;">
-                <img src="${lynkoLogoBase64}" style="max-height: 50px;" /><br>
-                <a href="https://alphaenvironmental.us/">https://alphaenvironmental.us/</a><br>
-                info@alphaenvironmental.us<br>
-                214-994-9874
-              </td>
-              <td colspan="4" style="text-align: right; padding-right: 15px;">
-                <!-- Blank Top Right -->
-              </td>
-            </tr>
-          </table>
-
-          <!-- Project & Contact Info (App Data) -->
-          <table style="margin-bottom: -1px;">
-            <tr>
-              <td class="bg-beige">Project Name</td>
-              <td style="width: 35%;">${cocData.description || ''}</td>
-              <td class="bg-beige">Account Info</td>
-              <td>${cocData.accountInfo || ''}</td>
-            </tr>
-            <tr>
-              <td class="bg-beige">Project Address</td>
-              <td>${cocData.zipCode || ''}</td>
-              <td class="bg-beige">Contact Name</td>
-              <td>${cocData.contactName || ''}</td>
-            </tr>
-            <tr>
-              <td class="bg-beige">Project # (PO)</td>
-              <td>${cocData.poNumber || ''}</td>
-              <td class="bg-beige">Contact Address</td>
-              <td>${cocData.contactAddress || ''}</td>
-            </tr>
-            <tr>
-              <td class="bg-beige">Sample Date</td>
-              <td>${cocData.samplingDate || ''}</td>
-              <td class="bg-beige">Contact Phone</td>
-              <td colspan="2">${cocData.contactPhone || ''}</td>
-            </tr>
-            <tr>
-              <td class="bg-beige">Sampled By</td>
-              <td>${cocData.sampledBy || ''}</td>
-              <td colspan="3"></td>
-            </tr>
-          </table>
-
-          <!-- Teal Section Header -->
-          <table>
-            <tr>
-              <td colspan="6" class="bg-teal">SAMPLES LOG</td>
-            </tr>
-            <tr>
-              <td class="bg-beige text-center" style="width: 10%;">Sample ID</td>
-              <td class="bg-beige text-center" style="width: 40%;">Description & Notes</td>
-              <td class="bg-beige text-center" style="width: 15%;">Property</td>
-              <td class="bg-beige text-center" style="width: 15%;">Measurement</td>
-              <td class="bg-beige text-center" style="width: 10%;">Analysis 1</td>
-              <td class="bg-beige text-center" style="width: 10%;">Analysis 2</td>
-            </tr>
-            ${rowsHtml}
-          </table>
-
-          <!-- Footer Section -->
-          <table style="margin-top: -1px;">
-            <tr>
-              <td class="bg-beige" style="width: 50%; height: 60px;">
-                Special Instructions:<br>
-                <span style="font-weight: normal;">${cocData.specialInstructions || ''}</span>
-              </td>
-              <td style="width: 50%;">
-                Inspector Signature:<br>
-                ${signatureHtml}<br>
-                <div style="text-align: right; margin-top: -15px;">
-                  Time: <u>&nbsp;${cocData.samplingTime || '__________'}&nbsp;</u>
-                </div>
-              </td>
-            </tr>
-            <tr>
-              <td class="bg-beige" style="height: 60px;">
-                Relinquished By Signature:<br>
-                ${relinquishedSigHtml}
-              </td>
-              <td style="padding: 10px;">
-                By signing this document, you certify that these samples were not tampered with while under your care.
-              </td>
-            </tr>
-          </table>
-          
-          <div style="text-align: right; margin-top: 5px; font-size: 10px;">
-            PAGE 1 of 1
-          </div>
+          ${pagesHtml}
         </body>
       </html>
     `;
