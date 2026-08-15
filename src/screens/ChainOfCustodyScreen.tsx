@@ -182,7 +182,7 @@ export default function ChainOfCustodyScreen({ navigation }: any) {
           <View style={styles.cardHeaderRow}>
             <Text style={styles.cardTitle}>Samples</Text>
             <TouchableOpacity onPress={() => navigation.navigate('EditSamples')}>
-              <Text style={styles.linkText}>Edit Samples &gt;</Text>
+              <Text style={styles.linkText}>Edit Samples →</Text>
             </TouchableOpacity>
           </View>
           

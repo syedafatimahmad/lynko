@@ -48,6 +48,102 @@ export default function EditSamplesScreen({ navigation }: any) {
     }
   };
 
+  const renderSampleItem = ({ item }: { item: SampleItem }) => {
+    const showNotes = Boolean(expandedNotes[item.id] || (item.notes && item.notes.length > 0));
+    
+    return (
+      <View style={styles.card}>
+        <View style={styles.cardHeader}>
+          <Text style={styles.sampleName}>{item.name}</Text>
+          <TouchableOpacity onPress={() => deleteSample(item.id)}>
+            <Ionicons name="trash-outline" size={24} color={colors.error} />
+          </TouchableOpacity>
+        </View>
+
+        <View style={styles.switchRow}>
+          <Text style={styles.switchLabel}>Analysis 1</Text>
+          <Switch 
+            value={item.analysis1Enabled} 
+            onValueChange={(val) => updateSample(item.id, { analysis1Enabled: val })} 
+            trackColor={{ true: colors.primaryContainer }} 
+          />
+        </View>
+        
+        <View style={[styles.switchRow, { marginBottom: 12 }]}>
+          <Text style={styles.switchLabel}>Analysis 2</Text>
+          <Switch 
+            value={item.analysis2Enabled} 
+            onValueChange={(val) => updateSample(item.id, { analysis2Enabled: val })} 
+            trackColor={{ true: colors.primaryContainer }} 
+          />
+        </View>
+
+        <View style={styles.inputGroup}>
+          <Text style={styles.label}>Description</Text>
+          <TextInput 
+            style={styles.input} 
+            placeholder="e.g. Bedroom Drywall"
+            placeholderTextColor={colors.outline}
+            value={item.description}
+            onChangeText={(val) => updateSample(item.id, { description: val })}
+          />
+        </View>
+
+        <View style={styles.row}>
+          <View style={[styles.inputGroup, { flex: 1, marginRight: 6 }]}>
+            <Text style={styles.label}>Property</Text>
+            <TextInput 
+              style={styles.input} 
+              placeholder="e.g. Bulk / Air"
+              placeholderTextColor={colors.outline}
+              value={item.property}
+              onChangeText={(val) => updateSample(item.id, { property: val })}
+            />
+          </View>
+          <View style={[styles.inputGroup, { flex: 1, marginLeft: 6 }]}>
+            <Text style={styles.label}>Measurement</Text>
+            <TextInput 
+              style={styles.input} 
+              placeholder="e.g. 15 L / 100 sq ft"
+              placeholderTextColor={colors.outline}
+              value={item.measurement}
+              onChangeText={(val) => updateSample(item.id, { measurement: val })}
+            />
+          </View>
+        </View>
+
+        {showNotes ? (
+          <View style={[styles.inputGroup, { marginTop: 4 }]}>
+            <Text style={styles.label}>Notes</Text>
+            <TextInput 
+              style={[styles.input, styles.notesInput]} 
+              placeholder="Add inspection notes, location details, etc."
+              placeholderTextColor={colors.outline}
+              value={item.notes}
+              onChangeText={(val) => updateSample(item.id, { notes: val })}
+              multiline
+            />
+          </View>
+        ) : null}
+
+        {item.photoUri ? (
+          <Image source={{ uri: item.photoUri }} style={styles.sampleImage} />
+        ) : null}
+
+        <View style={styles.cardFooter}>
+          <TouchableOpacity style={styles.footerAction} onPress={() => toggleNotes(item.id)}>
+            <Ionicons name={showNotes ? "document-text" : "add"} size={18} color={colors.primaryContainer} style={styles.iconMargin} />
+            <Text style={styles.footerActionText}>{showNotes ? 'Hide notes' : 'Add notes'}</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.footerAction} onPress={() => handleAttachPhoto(item.id)}>
+            <Ionicons name="camera-outline" size={18} color={colors.primaryContainer} style={styles.iconMargin} />
+            <Text style={styles.footerActionText}>{item.photoUri ? 'Retake Photo' : 'Attach Photo'}</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  };
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.header}>
@@ -67,105 +163,13 @@ export default function EditSamplesScreen({ navigation }: any) {
           showsVerticalScrollIndicator={false}
           contentContainerStyle={styles.listContent}
           ListEmptyComponent={<Text style={styles.empty}>No samples added yet.</Text>}
-          renderItem={({ item }) => {
-            const showNotes = expandedNotes[item.id] || (item.notes && item.notes.length > 0);
-            return (
-              <View style={styles.card}>
-                <View style={styles.cardHeader}>
-                  <Text style={styles.sampleName}>{item.name}</Text>
-                  <TouchableOpacity onPress={() => deleteSample(item.id)}>
-                    <Ionicons name="trash-outline" size={24} color={colors.error} />
-                  </TouchableOpacity>
-                </View>
-
-                <View style={styles.switchRow}>
-                  <Text style={styles.switchLabel}>Analysis 1</Text>
-                  <Switch 
-                    value={item.analysis1Enabled} 
-                    onValueChange={(val) => updateSample(item.id, { analysis1Enabled: val })} 
-                    trackColor={{ true: colors.primaryContainer }} 
-                  />
-                </View>
-                <View style={[styles.switchRow, { marginBottom: 12 }]}>
-                  <Text style={styles.switchLabel}>Analysis 2</Text>
-                  <Switch 
-                    value={item.analysis2Enabled} 
-                    onValueChange={(val) => updateSample(item.id, { analysis2Enabled: val })} 
-                    trackColor={{ true: colors.primaryContainer }} 
-                  />
-                </View>
-
-                <View style={styles.inputGroup}>
-                  <Text style={styles.label}>Description</Text>
-                  <TextInput 
-                    style={styles.input} 
-                    placeholder="e.g. Bedroom Drywall"
-                    placeholderTextColor={colors.outline}
-                    value={item.description}
-                    onChangeText={(val) => updateSample(item.id, { description: val })}
-                  />
-                </View>
-
-                <View style={styles.row}>
-                  <View style={[styles.inputGroup, { flex: 1, marginRight: 6 }]}>
-                    <Text style={styles.label}>Property</Text>
-                    <TextInput 
-                      style={styles.input} 
-                      placeholder="e.g. Bulk / Air"
-                      placeholderTextColor={colors.outline}
-                      value={item.property}
-                      onChangeText={(val) => updateSample(item.id, { property: val })}
-                    />
-                  </View>
-                  <View style={[styles.inputGroup, { flex: 1, marginLeft: 6 }]}>
-                    <Text style={styles.label}>Measurement</Text>
-                    <TextInput 
-                      style={styles.input} 
-                      placeholder="e.g. 15 L / 100 sq ft"
-                      placeholderTextColor={colors.outline}
-                      value={item.measurement}
-                      onChangeText={(val) => updateSample(item.id, { measurement: val })}
-                    />
-                  </View>
-                </View>
-
-                {showNotes && (
-                  <View style={[styles.inputGroup, { marginTop: 4 }]}>
-                    <Text style={styles.label}>Notes</Text>
-                    <TextInput 
-                      style={[styles.input, styles.notesInput]} 
-                      placeholder="Add inspection notes, location details, etc."
-                      placeholderTextColor={colors.outline}
-                      value={item.notes}
-                      onChangeText={(val) => updateSample(item.id, { notes: val })}
-                      multiline
-                    />
-                  </View>
-                )}
-
-                {item.photoUri && (
-                  <Image source={{ uri: item.photoUri }} style={styles.sampleImage} />
-                )}
-
-                <View style={styles.cardFooter}>
-                  <TouchableOpacity style={styles.footerAction} onPress={() => toggleNotes(item.id)}>
-                    <Ionicons name={showNotes ? "document-text" : "add"} size={18} color={colors.primaryContainer} style={{marginRight: 4}} />
-                    <Text style={styles.footerActionText}>{showNotes ? 'Hide notes' : 'Add notes'}</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity style={styles.footerAction} onPress={() => handleAttachPhoto(item.id)}>
-                    <Ionicons name="camera-outline" size={18} color={colors.primaryContainer} style={{marginRight: 4}} />
-                    <Text style={styles.footerActionText}>{item.photoUri ? 'Retake Photo' : 'Attach Photo'}</Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-            );
-          }}
+          renderItem={renderSampleItem}
         />
       </View>
 
       <View style={styles.bottomFooter}>
         <TouchableOpacity style={styles.addSampleBtn} onPress={handleAdd}>
-          <Ionicons name="add" size={20} color={colors.primaryContainer} style={{marginRight: 8}} />
+          <Ionicons name="add" size={20} color={colors.primaryContainer} style={styles.iconMargin} />
           <Text style={styles.addSampleBtnText}>Add Samples</Text>
         </TouchableOpacity>
         <TouchableOpacity style={styles.saveDoneBtn} onPress={() => navigation.goBack()}>
@@ -199,6 +203,7 @@ const styles = StyleSheet.create({
   cardFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderTopWidth: 1, borderTopColor: colors.outlineVariant, paddingTop: 12, marginTop: 4 },
   footerAction: { flexDirection: 'row', alignItems: 'center' },
   footerActionText: { color: colors.primaryContainer, fontWeight: '600', fontSize: 15 },
+  iconMargin: { marginRight: 6 },
   bottomFooter: { position: 'absolute', bottom: 0, width: '100%', backgroundColor: colors.surface, borderTopWidth: 1, borderTopColor: colors.outlineVariant, padding: 16, zIndex: 50 },
   addSampleBtn: { width: '100%', borderWidth: 2, borderStyle: 'dashed', borderColor: colors.primaryContainer, height: 48, borderRadius: 4, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginBottom: 8 },
   addSampleBtnText: { color: colors.primaryContainer, fontWeight: '600', fontSize: 15 },
