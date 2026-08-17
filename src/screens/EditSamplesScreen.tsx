@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, Image, Alert, Platform, Switch, TextInput } from 'react-native';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, Switch, TextInput } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import * as ImagePicker from 'expo-image-picker';
 import { useLynkoStore, SampleItem } from '../store/lynkoStore';
 import { colors } from '../theme/colors';
 import { Ionicons } from '@expo/vector-icons';
@@ -28,25 +27,6 @@ export default function EditSamplesScreen({ navigation }: any) {
       measurement: '0',
       notes: '',
     });
-  };
-
-  const handleAttachPhoto = async (sampleId: string) => {
-    const permissionResult = await ImagePicker.requestCameraPermissionsAsync();
-    
-    if (permissionResult.granted === false) {
-      Alert.alert("Permission Refused", "You need to allow camera access to take photos of samples.");
-      return;
-    }
-
-    const result = await ImagePicker.launchCameraAsync({
-      allowsEditing: true,
-      aspect: [4, 3],
-      quality: 0.5,
-    });
-
-    if (!result.canceled) {
-      updateSample(sampleId, { photoUri: result.assets[0].uri });
-    }
   };
 
   const renderSampleItem = ({ item }: { item: SampleItem }) => {
@@ -127,18 +107,10 @@ export default function EditSamplesScreen({ navigation }: any) {
           </View>
         ) : null}
 
-        {item.photoUri ? (
-          <Image source={{ uri: item.photoUri }} style={styles.sampleImage} />
-        ) : null}
-
         <View style={styles.cardFooter}>
           <TouchableOpacity style={styles.footerAction} onPress={() => toggleNotes(item.id)}>
             <Ionicons name={showNotes ? "document-text" : "add"} size={18} color={colors.primaryContainer} style={styles.iconMargin} />
             <Text style={styles.footerActionText}>{showNotes ? 'Hide notes' : 'Add notes'}</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.footerAction} onPress={() => handleAttachPhoto(item.id)}>
-            <Ionicons name="camera-outline" size={18} color={colors.primaryContainer} style={styles.iconMargin} />
-            <Text style={styles.footerActionText}>{item.photoUri ? 'Retake Photo' : 'Attach Photo'}</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -182,7 +154,7 @@ export default function EditSamplesScreen({ navigation }: any) {
 }
 
 const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: colors.background, paddingTop: Platform.OS === 'android' ? 24 : 0 },
+  safeArea: { flex: 1, backgroundColor: colors.background },
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: colors.surface, paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: colors.outlineVariant, zIndex: 50 },
   title: { fontSize: 24, fontWeight: 'bold', color: colors.onSurface },
   subtitle: { fontSize: 14, color: colors.secondary },
@@ -200,8 +172,7 @@ const styles = StyleSheet.create({
   input: { borderWidth: 1, borderColor: colors.outlineVariant, borderRadius: 4, paddingHorizontal: 12, paddingVertical: 8, fontSize: 14, color: colors.onSurface, backgroundColor: colors.surfaceContainerLowest },
   notesInput: { minHeight: 60, textAlignVertical: 'top' },
   row: { flexDirection: 'row' },
-  sampleImage: { width: '100%', height: 150, borderRadius: 8, resizeMode: 'cover', marginTop: 8, marginBottom: 12 },
-  cardFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderTopWidth: 1, borderTopColor: colors.outlineVariant, paddingTop: 12, marginTop: 4 },
+  cardFooter: { flexDirection: 'row', justifyContent: 'flex-start', alignItems: 'center', borderTopWidth: 1, borderTopColor: colors.outlineVariant, paddingTop: 10, marginTop: 4 },
   footerAction: { flexDirection: 'row', alignItems: 'center' },
   footerActionText: { color: colors.primaryContainer, fontWeight: '600', fontSize: 15 },
   iconMargin: { marginRight: 6 },

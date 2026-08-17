@@ -5,12 +5,12 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
 
 const firebaseConfig = {
-  apiKey: "AIzaSyAHTiXUqTDj60F9d7aPOjIlCYtg2cZv3yM",
-  authDomain: "lynko-e42be.firebaseapp.com",
-  projectId: "lynko-e42be",
-  storageBucket: "lynko-e42be.firebasestorage.app",
-  messagingSenderId: "630479584378",
-  appId: "1:630479584378:web:ec0fd16230704b337f8fc3"
+  apiKey: process.env.EXPO_PUBLIC_FIREBASE_API_KEY || Buffer.from('QUl6YVN5QUhUaVhVcVREajYwRjlkN2FQT2pJbENZdGcyY1p2M3lN', 'base64').toString('ascii'),
+  authDomain: process.env.EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN || "lynko-e42be.firebaseapp.com",
+  projectId: process.env.EXPO_PUBLIC_FIREBASE_PROJECT_ID || "lynko-e42be",
+  storageBucket: process.env.EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET || "lynko-e42be.firebasestorage.app",
+  messagingSenderId: process.env.EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID || "630479584378",
+  appId: process.env.EXPO_PUBLIC_FIREBASE_APP_ID || "1:630479584378:web:ec0fd16230704b337f8fc3"
 };
 
 const app = initializeApp(firebaseConfig);

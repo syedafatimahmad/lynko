@@ -48,6 +48,7 @@ export interface CoCData {
   specialInstructions: string;
   inspectorSignature?: string;
   relinquishedBySignature?: string;
+  photos?: string[];
 }
 
 interface LynkoState {
@@ -78,6 +79,7 @@ const initialCoCData: CoCData = {
   contactPhone: '214-994-9874',
   sampledBy: '',
   specialInstructions: '',
+  photos: [],
 };
 
 export const useLynkoStore = create<LynkoState>()(

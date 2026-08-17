@@ -39,16 +39,25 @@ export const generatePDF = async (project: Project | null, cocData: CoCData, sam
       specialInstructions: escapeHtml(cocData.specialInstructions),
     };
 
-    const maxRows = 15;
-    const totalPages = Math.max(1, Math.ceil(samples.length / maxRows));
+    const maxSamplesPerPage = 15;
+    const totalSamplePages = Math.max(1, Math.ceil(samples.length / maxSamplesPerPage));
+    
+    const photos = cocData.photos || [];
+    const maxPhotosPerPage = 8;
+    const totalPhotoPages = photos.length > 0 ? Math.ceil(photos.length / maxPhotosPerPage) : 0;
+    
+    const grandTotalPages = totalSamplePages + totalPhotoPages;
 
     let pagesHtml = '';
 
-    for (let page = 0; page < totalPages; page++) {
-      const startIndex = page * maxRows;
+    // ==========================================
+    // 1. SAMPLE LOG PAGES (15 Samples per Page)
+    // ==========================================
+    for (let page = 0; page < totalSamplePages; page++) {
+      const startIndex = page * maxSamplesPerPage;
       let rowsHtml = '';
       
-      for (let i = 0; i < maxRows; i++) {
+      for (let i = 0; i < maxSamplesPerPage; i++) {
         const s = samples[startIndex + i];
         if (s) {
           const safeName = escapeHtml(s.name.replace('Sample ID ', ''));
@@ -81,14 +90,16 @@ export const generatePDF = async (project: Project | null, cocData: CoCData, sam
         }
       }
 
+      const hasNextPage = (page < totalSamplePages - 1) || totalPhotoPages > 0;
+
       pagesHtml += `
-        <div class="page" ${page < totalPages - 1 ? 'style="page-break-after: always;"' : ''}>
+        <div class="page" ${hasNextPage ? 'style="page-break-after: always;"' : ''}>
           <!-- Header Logos -->
           <table style="margin-bottom: -1px;">
             <tr>
               <td class="bg-beige">Company name</td>
               <td style="width: 35%;">
-                <img src="${lynkoLogoBase64}" style="max-height: 50px;" /><br>
+                <img src="${lynkoLogoBase64}" style="max-height: 48px;" /><br>
                 <a href="https://alphaenvironmental.us/">https://alphaenvironmental.us/</a><br>
                 info@alphaenvironmental.us<br>
                 214-994-9874
@@ -99,7 +110,7 @@ export const generatePDF = async (project: Project | null, cocData: CoCData, sam
             </tr>
           </table>
 
-          <!-- Project & Contact Info (App Data) -->
+          <!-- Project & Contact Info -->
           <table style="margin-bottom: -1px;">
             <tr>
               <td class="bg-beige">Project Name</td>
@@ -151,7 +162,7 @@ export const generatePDF = async (project: Project | null, cocData: CoCData, sam
           <!-- Footer Section -->
           <table style="margin-top: -1px;">
             <tr>
-              <td class="bg-beige" style="width: 50%; height: 60px;">
+              <td class="bg-beige" style="width: 50%; height: 50px;">
                 Special Instructions:<br>
                 <span style="font-weight: normal;">${safeCoc.specialInstructions}</span>
               </td>
@@ -164,18 +175,91 @@ export const generatePDF = async (project: Project | null, cocData: CoCData, sam
               </td>
             </tr>
             <tr>
-              <td class="bg-beige" style="height: 60px;">
+              <td class="bg-beige" style="height: 50px;">
                 Relinquished By Signature:<br>
                 ${relinquishedSigHtml}
               </td>
-              <td style="padding: 10px;">
+              <td style="padding: 6px;">
                 By signing this document, you certify that these samples were not tampered with while under your care.
               </td>
             </tr>
           </table>
           
-          <div style="text-align: right; margin-top: 5px; font-size: 10px;">
-            PAGE ${page + 1} of ${totalPages}
+          <div style="text-align: right; margin-top: 5px; font-size: 10px; font-weight: bold;">
+            PAGE ${page + 1} of ${grandTotalPages}
+          </div>
+        </div>
+      `;
+    }
+
+    // ==========================================
+    // 2. PHOTO APPENDIX PAGES (8 Photos per Page)
+    // ==========================================
+    for (let pPage = 0; pPage < totalPhotoPages; pPage++) {
+      const pStartIndex = pPage * maxPhotosPerPage;
+      const currentPagePhotos = photos.slice(pStartIndex, pStartIndex + maxPhotosPerPage);
+      
+      let photoGridHtml = '';
+      for (let i = 0; i < maxPhotosPerPage; i++) {
+        const photoUri = currentPagePhotos[i];
+        const photoNum = pStartIndex + i + 1;
+        
+        if (photoUri) {
+          photoGridHtml += `
+            <div class="photo-cell">
+              <div class="photo-frame">
+                <img src="${photoUri}" class="photo-img" />
+              </div>
+              <div class="photo-label">Photo #${photoNum}</div>
+            </div>
+          `;
+        } else {
+          photoGridHtml += `
+            <div class="photo-cell empty-photo-cell">
+              <div class="empty-frame"></div>
+              <div class="photo-label">&nbsp;</div>
+            </div>
+          `;
+        }
+      }
+
+      const isLastPhotoPage = pPage === totalPhotoPages - 1;
+
+      pagesHtml += `
+        <div class="page" ${!isLastPhotoPage ? 'style="page-break-after: always;"' : ''}>
+          <!-- Header -->
+          <table style="margin-bottom: 6px;">
+            <tr>
+              <td class="bg-beige" style="width: 25%;">Company Name</td>
+              <td style="width: 35%;">
+                <img src="${lynkoLogoBase64}" style="max-height: 40px;" /><br>
+                Alpha Environmental • 214-994-9874
+              </td>
+              <td class="bg-teal text-center" style="font-size: 13px; font-weight: bold;">
+                PROJECT & SITE PHOTOS APPENDIX
+              </td>
+            </tr>
+          </table>
+
+          <!-- Project Context Bar -->
+          <table style="margin-bottom: 8px;">
+            <tr>
+              <td class="bg-beige" style="width: 15%;">Project Name</td>
+              <td>${safeCoc.description}</td>
+              <td class="bg-beige" style="width: 15%;">PO #</td>
+              <td>${safeCoc.poNumber}</td>
+              <td class="bg-beige" style="width: 15%;">Date</td>
+              <td>${safeCoc.samplingDate}</td>
+            </tr>
+          </table>
+
+          <!-- 8-Image Grid (2 columns x 4 rows) -->
+          <div class="photo-grid-container">
+            ${photoGridHtml}
+          </div>
+
+          <div style="text-align: right; margin-top: 6px; font-size: 10px; font-weight: bold;">
+            PAGE ${totalSamplePages + pPage + 1} of ${grandTotalPages}
           </div>
         </div>
       `;
@@ -185,11 +269,16 @@ export const generatePDF = async (project: Project | null, cocData: CoCData, sam
       <html>
         <head>
           <style>
+            @page {
+              margin: 8mm;
+              size: portrait;
+            }
             body {
               font-family: Arial, sans-serif;
-              font-size: 11px;
+              font-size: 10px;
               margin: 0;
-              padding: 10px;
+              padding: 0;
+              color: #111;
             }
             table {
               width: 100%;
@@ -198,7 +287,7 @@ export const generatePDF = async (project: Project | null, cocData: CoCData, sam
             }
             th, td {
               border: 1px solid black;
-              padding: 4px 6px;
+              padding: 3px 5px;
               vertical-align: top;
             }
             .bg-beige {
@@ -210,14 +299,64 @@ export const generatePDF = async (project: Project | null, cocData: CoCData, sam
               background-color: #bde4e4;
               font-weight: bold;
               text-align: center;
-              font-size: 12px;
-              padding: 6px;
+              font-size: 11px;
+              padding: 5px;
             }
             .text-center {
               text-align: center;
             }
             .bold {
               font-weight: bold;
+            }
+            .photo-grid-container {
+              display: flex;
+              flex-wrap: wrap;
+              justify-content: space-between;
+              width: 100%;
+              border: 1px solid black;
+              padding: 4px;
+              box-sizing: border-box;
+            }
+            .photo-cell {
+              width: 48.5%;
+              height: 195px;
+              margin-bottom: 6px;
+              border: 1px solid #999;
+              background-color: #fafafa;
+              padding: 3px;
+              box-sizing: border-box;
+              display: flex;
+              flex-direction: column;
+              align-items: center;
+            }
+            .empty-photo-cell {
+              border: 1px dashed #ccc;
+              background-color: #fdfdfd;
+            }
+            .photo-frame {
+              width: 100%;
+              height: 170px;
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              overflow: hidden;
+              background-color: #eee;
+            }
+            .empty-frame {
+              width: 100%;
+              height: 170px;
+            }
+            .photo-img {
+              width: 100%;
+              height: 100%;
+              object-fit: cover;
+            }
+            .photo-label {
+              margin-top: 2px;
+              font-size: 9px;
+              font-weight: bold;
+              color: #333;
+              text-align: center;
             }
           </style>
         </head>
