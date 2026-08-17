@@ -97,15 +97,9 @@ export const generatePDF = async (project: Project | null, cocData: CoCData, sam
           <!-- Header Logos -->
           <table style="margin-bottom: -1px;">
             <tr>
-              <td class="bg-beige">Company name</td>
-              <td style="width: 35%;">
-                <img src="${lynkoLogoBase64}" style="max-height: 48px;" /><br>
-                <a href="https://alphaenvironmental.us/">https://alphaenvironmental.us/</a><br>
-                info@alphaenvironmental.us<br>
-                214-994-9874
-              </td>
-              <td colspan="4" style="text-align: right; padding-right: 15px;">
-                <!-- Blank Top Right -->
+              <td class="bg-beige" style="width: 15%;">Company name</td>
+              <td style="width: 85%; vertical-align: middle; padding: 6px 12px;">
+                <img src="${lynkoLogoBase64}" style="max-height: 46px; display: block;" />
               </td>
             </tr>
           </table>
@@ -230,10 +224,9 @@ export const generatePDF = async (project: Project | null, cocData: CoCData, sam
           <!-- Header -->
           <table style="margin-bottom: 6px;">
             <tr>
-              <td class="bg-beige" style="width: 25%;">Company Name</td>
-              <td style="width: 35%;">
-                <img src="${lynkoLogoBase64}" style="max-height: 40px;" /><br>
-                Alpha Environmental • 214-994-9874
+              <td class="bg-beige" style="width: 15%;">Company Name</td>
+              <td style="width: 45%; vertical-align: middle; padding: 6px 12px;">
+                <img src="${lynkoLogoBase64}" style="max-height: 40px; display: block;" />
               </td>
               <td class="bg-teal text-center" style="font-size: 13px; font-weight: bold;">
                 PROJECT & SITE PHOTOS APPENDIX
