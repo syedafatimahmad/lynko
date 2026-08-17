@@ -7,6 +7,7 @@ import AppTabs from './AppTabs';
 import SignInScreen from '../screens/SignInScreen';
 import NewProjectScreen from '../screens/NewProjectScreen';
 import ChainOfCustodyScreen from '../screens/ChainOfCustodyScreen';
+import SampleTypesScreen from '../screens/SampleTypesScreen';
 import EditSamplesScreen from '../screens/EditSamplesScreen';
 import SubmitCoCScreen from '../screens/SubmitCoCScreen';
 
@@ -23,6 +24,7 @@ export default function RootNavigator() {
             <Stack.Screen name="AppTabs" component={AppTabs} />
             <Stack.Screen name="NewProject" component={NewProjectScreen} options={{ presentation: 'modal' }} />
             <Stack.Screen name="ChainOfCustody" component={ChainOfCustodyScreen} />
+            <Stack.Screen name="SampleTypes" component={SampleTypesScreen} />
             <Stack.Screen name="EditSamples" component={EditSamplesScreen} />
             <Stack.Screen name="SubmitCoC" component={SubmitCoCScreen} />
           </>

@@ -255,19 +255,28 @@ export default function ChainOfCustodyScreen({ navigation }: any) {
 
         {/* Card 4: Samples */}
         <View style={styles.card}>
-          <View style={styles.cardHeaderRow}>
-            <Text style={styles.cardTitle}>Samples</Text>
-            <TouchableOpacity onPress={() => navigation.navigate('EditSamples')}>
-              <Text style={styles.linkText}>Edit Samples →</Text>
-            </TouchableOpacity>
-          </View>
-          
-          <TouchableOpacity style={styles.samplesBox} onPress={() => navigation.navigate('EditSamples')}>
-            <View>
-              <Text style={styles.samplesBoxTitle}>{samples.length} Logged Samples</Text>
-              <Text style={styles.samplesBoxSubtitle}>Asbestos PLM • Next-day rush</Text>
+          <Text style={styles.cardTitle}>Samples</Text>
+
+          {/* Top trigger: Edit Samples > (Opens SampleTypes) */}
+          <TouchableOpacity 
+            style={styles.editSamplesRow} 
+            onPress={() => navigation.navigate('SampleTypes')}
+          >
+            <Text style={styles.editSamplesText}>Edit Samples</Text>
+            <Ionicons name="chevron-forward" size={18} color="#94A3B8" />
+          </TouchableOpacity>
+
+          {/* Batch Card (Screenshot 1: 4 Bulk sample / Asbestos PLM / Next-day rush) */}
+          <TouchableOpacity 
+            style={styles.batchCard} 
+            onPress={() => navigation.navigate('EditSamples')}
+          >
+            <View style={{ flex: 1 }}>
+              <Text style={styles.batchCountTitle}>{samples.length} Bulk sample</Text>
+              <Text style={styles.batchAnalysisText}>{cocData.analysis1 || 'Asbestos PLM'}</Text>
+              <Text style={styles.batchTurnaroundText}>{cocData.turnaround1 || 'Next-day rush'}</Text>
             </View>
-            <Ionicons name="chevron-forward" size={24} color={colors.secondary} />
+            <Ionicons name="chevron-forward" size={20} color="#94A3B8" />
           </TouchableOpacity>
         </View>
 
@@ -362,7 +371,42 @@ const styles = StyleSheet.create({
   photoThumbnail: { width: '100%', height: '100%', resizeMode: 'cover' },
   photoDeleteBtn: { position: 'absolute', top: 2, right: 2, backgroundColor: 'rgba(0,0,0,0.6)', width: 20, height: 20, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
   photoBadge: { position: 'absolute', bottom: 2, left: 2, backgroundColor: 'rgba(0,0,0,0.6)', color: '#fff', fontSize: 9, fontWeight: 'bold', paddingHorizontal: 4, borderRadius: 3 },
-  emptyPhotosText: { color: colors.secondary, fontSize: 13, fontStyle: 'italic', textAlign: 'center', marginVertical: 8 },
+  editSamplesRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F1F5F9',
+  },
+  editSamplesText: {
+    color: '#0284c7',
+    fontSize: 16,
+    fontWeight: '500',
+  },
+  batchCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F1F5F9',
+  },
+  batchCountTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.onSurface,
+    marginBottom: 2,
+  },
+  batchAnalysisText: {
+    fontSize: 14,
+    color: colors.onSurface,
+    marginBottom: 2,
+  },
+  batchTurnaroundText: {
+    fontSize: 14,
+    color: colors.onSurfaceVariant,
+  },
   samplesBox: { backgroundColor: '#F1F5F9', borderRadius: 8, padding: 16, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   samplesBoxTitle: { fontSize: 18, fontWeight: 'bold', color: colors.onSurface },
   samplesBoxSubtitle: { fontSize: 14, color: colors.secondary, marginTop: 2 },

@@ -37,6 +37,7 @@ export const generatePDF = async (project: Project | null, cocData: CoCData, sam
       sampledBy: escapeHtml(cocData.sampledBy),
       accountInfo: escapeHtml(cocData.accountInfo),
       specialInstructions: escapeHtml(cocData.specialInstructions),
+      turnaround1: escapeHtml(cocData.turnaround1 || ''),
     };
 
     const maxSamplesPerPage = 15;
@@ -65,13 +66,14 @@ export const generatePDF = async (project: Project | null, cocData: CoCData, sam
           const safeNotes = escapeHtml(s.notes || '');
           const safeProp = escapeHtml(s.property || '');
           const safeMeas = escapeHtml(s.measurement || '');
+          const safeUnit = s.unit && s.unit !== 'N/A' ? ` ${escapeHtml(s.unit)}` : '';
           
           rowsHtml += `
             <tr>
               <td class="text-center">${safeName}</td>
               <td>${safeDesc}${safeNotes ? `<br><i>Note: ${safeNotes}</i>` : ''}</td>
               <td class="text-center">${safeProp}</td>
-              <td class="text-center">${safeMeas}</td>
+              <td class="text-center">${safeMeas}${safeUnit}</td>
               <td class="text-center bold">${s.analysis1Enabled ? 'X' : ''}</td>
               <td class="text-center bold">${s.analysis2Enabled ? 'X' : ''}</td>
             </tr>
@@ -140,15 +142,15 @@ export const generatePDF = async (project: Project | null, cocData: CoCData, sam
           <!-- Teal Section Header -->
           <table>
             <tr>
-              <td colspan="6" class="bg-teal">SAMPLES LOG</td>
+              <td colspan="6" class="bg-teal">SAMPLES LOG (${safeCoc.turnaround1 ? `Turnaround: ${escapeHtml(safeCoc.turnaround1)}` : 'Standard'})</td>
             </tr>
             <tr>
               <td class="bg-beige text-center" style="width: 10%;">Sample ID</td>
               <td class="bg-beige text-center" style="width: 40%;">Description & Notes</td>
               <td class="bg-beige text-center" style="width: 15%;">Property</td>
               <td class="bg-beige text-center" style="width: 15%;">Measurement</td>
-              <td class="bg-beige text-center" style="width: 10%;">Analysis 1</td>
-              <td class="bg-beige text-center" style="width: 10%;">Analysis 2</td>
+              <td class="bg-beige text-center" style="width: 10%;">${escapeHtml(cocData.analysis1 || 'Analysis 1')}</td>
+              <td class="bg-beige text-center" style="width: 10%;">${escapeHtml(cocData.analysis2 && cocData.analysis2 !== 'Not set' ? cocData.analysis2 : 'Analysis 2')}</td>
             </tr>
             ${rowsHtml}
           </table>

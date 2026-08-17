@@ -24,6 +24,7 @@ export interface SampleItem {
   description: string;
   property: string;
   measurement: string;
+  unit?: string;
   notes: string;
   photoUri?: string;
 }
@@ -32,6 +33,7 @@ export interface EquipmentItem {
   id: string;
   name: string;
   count: number;
+  image?: any;
 }
 
 export interface CoCData {
@@ -49,6 +51,11 @@ export interface CoCData {
   inspectorSignature?: string;
   relinquishedBySignature?: string;
   photos?: string[];
+  sampleTypeCounts?: { [key: string]: number };
+  analysis1?: string;
+  turnaround1?: string;
+  analysis2?: string;
+  turnaround2?: string;
 }
 
 interface LynkoState {
@@ -64,6 +71,8 @@ interface LynkoState {
   deleteSample: (id: string) => Promise<void>;
   updateEquipment: (id: string, delta: number) => void;
   updateCoCData: (updates: Partial<CoCData>) => Promise<void>;
+  setSampleTypeCounts: (counts: { [key: string]: number }) => Promise<void>;
+  autoFillField: (field: 'sampleId' | 'description' | 'measurement' | 'unit', value?: string) => Promise<void>;
   addRecipientEmail: (email: string) => Promise<void>;
   syncFromFirestore: () => Promise<void>;
   clearStore: () => void;
@@ -82,6 +91,11 @@ const initialCoCData: CoCData = {
   sampledBy: '',
   specialInstructions: '',
   photos: [],
+  sampleTypeCounts: { 'Bulk sample': 4 },
+  analysis1: 'Asbestos PLM',
+  turnaround1: 'Next-day rush',
+  analysis2: 'Not set',
+  turnaround2: '',
 };
 
 const defaultRecipients = ['info@alphaenvironmental.us', 'lab@alphaenvironmental.us'];
@@ -90,12 +104,22 @@ export const useLynkoStore = create<LynkoState>()(
   persist(
     (set, get) => ({
       projects: [],
-      samples: [],
+      samples: [
+        { id: '1', name: '1', analysis1Enabled: true, analysis2Enabled: false, description: 'Bedroom', property: 'None', measurement: '0', unit: 'N/A', notes: '' },
+        { id: '2', name: '2', analysis1Enabled: true, analysis2Enabled: false, description: '', property: 'None', measurement: '0', unit: 'N/A', notes: '' },
+        { id: '3', name: '3', analysis1Enabled: true, analysis2Enabled: false, description: '', property: 'None', measurement: '0', unit: 'N/A', notes: '' },
+        { id: '4', name: '4', analysis1Enabled: true, analysis2Enabled: false, description: '', property: 'None', measurement: '0', unit: 'N/A', notes: '' },
+      ],
       equipment: [
         { id: '1', name: 'Asbestos PCM Cassette', count: 0 },
-        { id: '2', name: 'Asbestos TEM Cassette', count: 0 },
-        { id: '3', name: 'Air-O-Cell Spore Trap', count: 0 },
-        { id: '4', name: 'Lead Dust Wipe Template', count: 0 },
+        { id: '2', name: 'Asbestos TEM cassette', count: 0 },
+        { id: '3', name: 'Bulk sample', count: 4 },
+        { id: '4', name: 'Endotoxin free cassette', count: 0 },
+        { id: '5', name: 'Polycarbonate Air Filter Cassette', count: 0 },
+        { id: '6', name: 'PTFE Filter Cassette', count: 0 },
+        { id: '7', name: 'Spore Trap: Cassette', count: 0 },
+        { id: '8', name: 'Spore Trap: Slide', count: 0 },
+        { id: '9', name: 'Via-cell cassette', count: 0 },
       ],
       cocData: initialCoCData,
       recipientHistory: defaultRecipients,
@@ -151,6 +175,76 @@ export const useLynkoStore = create<LynkoState>()(
         }
       },
 
+      setSampleTypeCounts: async (counts) => {
+        let totalCount = 0;
+        Object.values(counts).forEach(c => { totalCount += c; });
+        if (totalCount === 0) totalCount = 1;
+
+        const currentSamples = get().samples;
+        const newSamples: SampleItem[] = [];
+
+        for (let i = 0; i < totalCount; i++) {
+          if (currentSamples[i]) {
+            newSamples.push({
+              ...currentSamples[i],
+              name: `${i + 1}`,
+            });
+          } else {
+            newSamples.push({
+              id: `${Date.now()}_${i + 1}`,
+              name: `${i + 1}`,
+              analysis1Enabled: true,
+              analysis2Enabled: false,
+              description: '',
+              property: 'None',
+              measurement: '0',
+              unit: 'N/A',
+              notes: '',
+            });
+          }
+        }
+
+        set((state) => ({
+          samples: newSamples,
+          cocData: {
+            ...state.cocData,
+            sampleTypeCounts: counts,
+          }
+        }));
+
+        if (auth.currentUser) {
+          await setDoc(doc(db, 'users', auth.currentUser.uid, 'cocData', 'current'), get().cocData, { merge: true });
+        }
+      },
+
+      autoFillField: async (field, value) => {
+        const currentSamples = get().samples;
+        let updatedSamples: SampleItem[];
+
+        if (field === 'sampleId') {
+          updatedSamples = currentSamples.map((s, idx) => ({ ...s, name: `${idx + 1}` }));
+        } else if (field === 'description') {
+          const fillVal = value || 'General Area';
+          updatedSamples = currentSamples.map(s => ({ ...s, description: s.description || fillVal }));
+        } else if (field === 'measurement') {
+          const fillVal = value || '0';
+          updatedSamples = currentSamples.map(s => ({ ...s, measurement: fillVal }));
+        } else if (field === 'unit') {
+          const fillVal = value || 'N/A';
+          updatedSamples = currentSamples.map(s => ({ ...s, unit: fillVal }));
+        } else {
+          updatedSamples = currentSamples;
+        }
+
+        set({ samples: updatedSamples });
+
+        if (auth.currentUser) {
+          for (const s of updatedSamples) {
+            await setDoc(doc(db, 'users', auth.currentUser.uid, 'samples', s.id), s, { merge: true });
+          }
+        }
+      },
+
       addRecipientEmail: async (email) => {
         const clean = email.trim().toLowerCase();
         if (!clean) return;
@@ -188,7 +282,7 @@ export const useLynkoStore = create<LynkoState>()(
           
           set({ 
             projects: fetchedProjects, 
-            samples: fetchedSamples, 
+            samples: fetchedSamples.length > 0 ? fetchedSamples : get().samples, 
             cocData: fetchedCoC,
             recipientHistory: fetchedRecipients
           });
