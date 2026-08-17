@@ -1,6 +1,8 @@
-import { initializeApp } from 'firebase/app';
-import { getAuth } from 'firebase/auth';
+import { initializeApp, getApps, getApp } from 'firebase/app';
+import { initializeAuth, getAuth } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Platform } from 'react-native';
 
 const decodeBase64 = (str: string) => {
   try {
@@ -20,7 +22,30 @@ const firebaseConfig = {
   appId: process.env.EXPO_PUBLIC_FIREBASE_APP_ID || "1:630479584378:web:ec0fd16230704b337f8fc3"
 };
 
-const app = initializeApp(firebaseConfig);
+const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
 
-export const auth = getAuth(app);
+let auth: ReturnType<typeof getAuth>;
+
+if (Platform.OS === 'web') {
+  auth = getAuth(app);
+} else {
+  try {
+    // Dynamically require React Native persistence to eliminate RN persistence warning
+    // and satisfy TypeScript public web typings
+    const authModule = require('firebase/auth');
+    const getRNPersistence = authModule.getReactNativePersistence;
+    
+    if (typeof getRNPersistence === 'function') {
+      auth = initializeAuth(app, {
+        persistence: getRNPersistence(AsyncStorage)
+      });
+    } else {
+      auth = getAuth(app);
+    }
+  } catch (e) {
+    auth = getAuth(app);
+  }
+}
+
+export { auth };
 export const db = getFirestore(app);
