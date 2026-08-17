@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, FlatList, TouchableOpacity, Switch, TextInput, 
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLynkoStore, SampleItem } from '../store/lynkoStore';
 import { colors } from '../theme/colors';
+import { Ionicons } from '@expo/vector-icons';
 
 export default function EditSamplesScreen({ navigation }: any) {
   const samples = useLynkoStore((state) => state.samples);
@@ -17,7 +18,7 @@ export default function EditSamplesScreen({ navigation }: any) {
   const [analysis2, setAnalysis2] = useState(cocData.analysis2 || 'Not set');
   const [turnaround2, setTurnaround2] = useState(cocData.turnaround2 || '');
 
-  // Quick Auto-fill prompt modal state
+  // Quick Auto-fill modal state
   const [autoFillModalVisible, setAutoFillModalVisible] = useState(false);
   const [autoFillType, setAutoFillType] = useState<'sampleId' | 'description' | 'measurement' | 'unit'>('description');
   const [autoFillInput, setAutoFillInput] = useState('');
@@ -53,88 +54,103 @@ export default function EditSamplesScreen({ navigation }: any) {
   };
 
   const renderHeader = () => (
-    <View>
-      {/* Top Analysis & Turnaround Box matching Screenshot 3 */}
-      <View style={styles.configBox}>
-        <View style={styles.configRow}>
-          <Text style={styles.configLabel}>Add Analysis 1:</Text>
-          <TextInput
-            style={styles.configInput}
-            value={analysis1}
-            onChangeText={setAnalysis1}
-            placeholder="e.g. Asbestos PLM"
-          />
+    <View style={styles.headerSectionsWrapper}>
+      {/* Card 1: Batch Analysis & Turnaround Configuration */}
+      <View style={styles.card}>
+        <View style={styles.cardHeaderRow}>
+          <Ionicons name="flask-outline" size={20} color={colors.primaryContainer} style={{ marginRight: 8 }} />
+          <Text style={styles.cardTitle}>Batch Analysis & Turnaround</Text>
         </View>
 
-        <View style={styles.configRow}>
-          <Text style={styles.configSubLabel}>Turnaround:</Text>
-          <TextInput
-            style={styles.configSubInput}
-            value={turnaround1}
-            onChangeText={setTurnaround1}
-            placeholder="e.g. Next-day rush"
-          />
-        </View>
+        <View style={styles.configGrid}>
+          <View style={styles.inputGroup}>
+            <Text style={styles.inputLabel}>Add Analysis 1</Text>
+            <TextInput
+              style={styles.input}
+              value={analysis1}
+              onChangeText={setAnalysis1}
+              placeholder="e.g. Asbestos PLM"
+            />
+          </View>
 
-        <View style={styles.configRow}>
-          <Text style={styles.configLabel}>Add Analysis 2:</Text>
-          <TextInput
-            style={styles.configInput}
-            value={analysis2}
-            onChangeText={setAnalysis2}
-            placeholder="Not set"
-          />
-        </View>
+          <View style={styles.inputGroup}>
+            <Text style={styles.inputLabel}>Turnaround Time (TAT)</Text>
+            <TextInput
+              style={styles.input}
+              value={turnaround1}
+              onChangeText={setTurnaround1}
+              placeholder="e.g. Next-day rush"
+            />
+          </View>
 
-        <View style={styles.configRow}>
-          <Text style={styles.configSubLabel}>Turnaround:</Text>
-          <TextInput
-            style={styles.configSubInput}
-            value={turnaround2}
-            onChangeText={setTurnaround2}
-            placeholder="Optional"
-          />
+          <View style={styles.row}>
+            <View style={[styles.inputGroup, { flex: 1, marginRight: 8 }]}>
+              <Text style={styles.inputLabel}>Add Analysis 2</Text>
+              <TextInput
+                style={styles.input}
+                value={analysis2}
+                onChangeText={setAnalysis2}
+                placeholder="Not set"
+              />
+            </View>
+
+            <View style={[styles.inputGroup, { flex: 1, marginLeft: 8 }]}>
+              <Text style={styles.inputLabel}>Turnaround 2</Text>
+              <TextInput
+                style={styles.input}
+                value={turnaround2}
+                onChangeText={setTurnaround2}
+                placeholder="Optional"
+              />
+            </View>
+          </View>
         </View>
       </View>
 
-      {/* Auto Fill Section matching Screenshot 3 */}
-      <View style={styles.autoFillSection}>
-        <Text style={styles.editSamplesHeaderTitle}>Edit Samples</Text>
-        <Text style={styles.autoFillHeader}>Auto fill</Text>
+      {/* Card 2: Auto Fill Quick Tools */}
+      <View style={styles.card}>
+        <View style={styles.cardHeaderRow}>
+          <Ionicons name="flash-outline" size={18} color={colors.primaryContainer} style={{ marginRight: 8 }} />
+          <Text style={styles.cardTitle}>Auto-Fill Tools (1-Tap Mass Fill)</Text>
+        </View>
 
         <View style={styles.autoFillGrid}>
-          <View style={styles.autoFillCol}>
-            <TouchableOpacity 
-              style={styles.autoFillBtn} 
-              onPress={() => handleTriggerAutoFill('sampleId')}
-            >
-              <Text style={styles.autoFillBtnText}>Sample ID</Text>
-            </TouchableOpacity>
+          <TouchableOpacity 
+            style={styles.autoFillBtn} 
+            onPress={() => handleTriggerAutoFill('sampleId')}
+          >
+            <Ionicons name="list-outline" size={16} color={colors.primary} style={{ marginRight: 6 }} />
+            <Text style={styles.autoFillBtnText}>Sample ID (1..N)</Text>
+          </TouchableOpacity>
 
-            <TouchableOpacity 
-              style={styles.autoFillBtn} 
-              onPress={() => handleTriggerAutoFill('description')}
-            >
-              <Text style={styles.autoFillBtnText}>Description</Text>
-            </TouchableOpacity>
-          </View>
+          <TouchableOpacity 
+            style={styles.autoFillBtn} 
+            onPress={() => handleTriggerAutoFill('description')}
+          >
+            <Ionicons name="text-outline" size={16} color={colors.primary} style={{ marginRight: 6 }} />
+            <Text style={styles.autoFillBtnText}>Description</Text>
+          </TouchableOpacity>
 
-          <View style={styles.autoFillCol}>
-            <TouchableOpacity 
-              style={styles.autoFillBtn} 
-              onPress={() => handleTriggerAutoFill('measurement')}
-            >
-              <Text style={styles.autoFillBtnText}>Measurement</Text>
-            </TouchableOpacity>
+          <TouchableOpacity 
+            style={styles.autoFillBtn} 
+            onPress={() => handleTriggerAutoFill('measurement')}
+          >
+            <Ionicons name="speedometer-outline" size={16} color={colors.primary} style={{ marginRight: 6 }} />
+            <Text style={styles.autoFillBtnText}>Measurement</Text>
+          </TouchableOpacity>
 
-            <TouchableOpacity 
-              style={styles.autoFillBtn} 
-              onPress={() => handleTriggerAutoFill('unit')}
-            >
-              <Text style={styles.autoFillBtnText}>Unit</Text>
-            </TouchableOpacity>
-          </View>
+          <TouchableOpacity 
+            style={styles.autoFillBtn} 
+            onPress={() => handleTriggerAutoFill('unit')}
+          >
+            <Ionicons name="cube-outline" size={16} color={colors.primary} style={{ marginRight: 6 }} />
+            <Text style={styles.autoFillBtnText}>Unit (N/A, L, sq ft)</Text>
+          </TouchableOpacity>
         </View>
+      </View>
+
+      <View style={styles.samplesListHeader}>
+        <Text style={styles.samplesListTitle}>Individual Sample Records ({samples.length})</Text>
       </View>
     </View>
   );
@@ -144,107 +160,131 @@ export default function EditSamplesScreen({ navigation }: any) {
 
     return (
       <View style={styles.sampleCard}>
-        {/* Sample ID Row */}
-        <View style={styles.fieldRow}>
-          <Text style={styles.fieldLabel}>Sample ID</Text>
-          <TextInput
-            style={[styles.fieldInput, { flex: 1 }]}
-            value={item.name}
-            onChangeText={(val) => updateSample(item.id, { name: val })}
-            placeholder={`${index + 1}`}
-          />
-        </View>
-
-        {/* Analysis 1 & 2 Toggles */}
-        <View style={styles.togglesRow}>
-          <View style={styles.toggleGroup}>
-            <Text style={styles.toggleText}>Analysis 1:</Text>
-            <Switch
-              value={item.analysis1Enabled}
-              onValueChange={(val) => updateSample(item.id, { analysis1Enabled: val })}
-              trackColor={{ true: '#22c55e', false: '#cbd5e1' }}
-            />
+        {/* Sample Header Row with Badge & Toggles */}
+        <View style={styles.sampleCardHeader}>
+          <View style={styles.sampleBadge}>
+            <Text style={styles.sampleBadgeText}>Sample #{index + 1}</Text>
           </View>
 
-          <View style={styles.toggleGroup}>
-            <Text style={styles.toggleText}>Analysis 2:</Text>
-            <Switch
-              value={item.analysis2Enabled}
-              onValueChange={(val) => updateSample(item.id, { analysis2Enabled: val })}
-              trackColor={{ true: '#22c55e', false: '#cbd5e1' }}
-            />
+          <View style={styles.togglesContainer}>
+            <View style={styles.toggleItem}>
+              <Text style={styles.toggleItemLabel}>Analysis 1</Text>
+              <Switch
+                value={item.analysis1Enabled}
+                onValueChange={(val) => updateSample(item.id, { analysis1Enabled: val })}
+                trackColor={{ true: colors.primaryContainer, false: '#CBD5E1' }}
+              />
+            </View>
+
+            <View style={styles.toggleItem}>
+              <Text style={styles.toggleItemLabel}>Analysis 2</Text>
+              <Switch
+                value={item.analysis2Enabled}
+                onValueChange={(val) => updateSample(item.id, { analysis2Enabled: val })}
+                trackColor={{ true: colors.primaryContainer, false: '#CBD5E1' }}
+              />
+            </View>
           </View>
         </View>
 
-        {/* Description Row */}
-        <View style={styles.fieldRow}>
-          <Text style={styles.fieldLabel}>Description</Text>
-          <TextInput
-            style={[styles.fieldInput, { flex: 1 }]}
-            value={item.description}
-            onChangeText={(val) => updateSample(item.id, { description: val })}
-            placeholder="e.g. Bedroom"
-          />
-        </View>
-
-        {/* Property & Add Notes Row */}
-        <View style={styles.fieldRow}>
-          <Text style={styles.fieldLabel}>Property</Text>
-          <TextInput
-            style={[styles.fieldInput, { width: 120 }]}
-            value={item.property}
-            onChangeText={(val) => updateSample(item.id, { property: val })}
-            placeholder="None"
-          />
-          <TouchableOpacity style={styles.addNotesBtn} onPress={() => toggleNotes(item.id)}>
-            <Text style={styles.addNotesText}>{showNotes ? 'Hide notes' : 'Add notes'}</Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* Expandable Notes Input */}
-        {showNotes ? (
-          <View style={[styles.fieldRow, { marginTop: 6 }]}>
-            <Text style={styles.fieldLabel}>Notes</Text>
+        {/* Sample ID & Description Inputs */}
+        <View style={styles.row}>
+          <View style={[styles.inputGroup, { width: 110, marginRight: 8 }]}>
+            <Text style={styles.inputLabel}>Sample ID</Text>
             <TextInput
-              style={[styles.fieldInput, styles.notesInput]}
+              style={styles.input}
+              value={item.name}
+              onChangeText={(val) => updateSample(item.id, { name: val })}
+              placeholder={`${index + 1}`}
+            />
+          </View>
+
+          <View style={[styles.inputGroup, { flex: 1 }]}>
+            <Text style={styles.inputLabel}>Description / Location</Text>
+            <TextInput
+              style={styles.input}
+              value={item.description}
+              onChangeText={(val) => updateSample(item.id, { description: val })}
+              placeholder="e.g. Master Bedroom Ceiling"
+            />
+          </View>
+        </View>
+
+        {/* Property & Measurement / Unit */}
+        <View style={styles.row}>
+          <View style={[styles.inputGroup, { flex: 1.2, marginRight: 8 }]}>
+            <Text style={styles.inputLabel}>Property / Material</Text>
+            <TextInput
+              style={styles.input}
+              value={item.property}
+              onChangeText={(val) => updateSample(item.id, { property: val })}
+              placeholder="None / Bulk"
+            />
+          </View>
+
+          <View style={[styles.inputGroup, { flex: 0.9, marginRight: 6 }]}>
+            <Text style={styles.inputLabel}>Measurement</Text>
+            <TextInput
+              style={styles.input}
+              value={item.measurement}
+              onChangeText={(val) => updateSample(item.id, { measurement: val })}
+              placeholder="0"
+            />
+          </View>
+
+          <View style={[styles.inputGroup, { flex: 0.8 }]}>
+            <Text style={styles.inputLabel}>Unit</Text>
+            <TextInput
+              style={styles.input}
+              value={item.unit || 'N/A'}
+              onChangeText={(val) => updateSample(item.id, { unit: val })}
+              placeholder="N/A"
+            />
+          </View>
+        </View>
+
+        {/* Expandable Notes Link */}
+        <TouchableOpacity style={styles.notesToggleRow} onPress={() => toggleNotes(item.id)}>
+          <Ionicons 
+            name={showNotes ? "document-text" : "chatbubble-ellipses-outline"} 
+            size={16} 
+            color={colors.primaryContainer} 
+            style={{ marginRight: 6 }} 
+          />
+          <Text style={styles.notesToggleText}>
+            {showNotes ? 'Hide inspection notes' : '+ Add inspection notes'}
+          </Text>
+        </TouchableOpacity>
+
+        {/* Expandable Notes Area */}
+        {showNotes ? (
+          <View style={[styles.inputGroup, { marginTop: 6 }]}>
+            <TextInput
+              style={[styles.input, styles.notesArea]}
               value={item.notes}
               onChangeText={(val) => updateSample(item.id, { notes: val })}
-              placeholder="Inspection comments / notes"
+              placeholder="Detailed comments, condition, sampling technique notes..."
               multiline
             />
           </View>
         ) : null}
-
-        {/* Measurement & Unit Row */}
-        <View style={styles.fieldRow}>
-          <Text style={styles.fieldLabel}>Measurement</Text>
-          <TextInput
-            style={[styles.fieldInput, styles.smallInput]}
-            value={item.measurement}
-            onChangeText={(val) => updateSample(item.id, { measurement: val })}
-            placeholder="0"
-          />
-          <TextInput
-            style={[styles.fieldInput, styles.unitInput]}
-            value={item.unit || 'N/A'}
-            onChangeText={(val) => updateSample(item.id, { unit: val })}
-            placeholder="N/A"
-          />
-        </View>
       </View>
     );
   };
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      {/* Navigation Header matching Screenshots 3 & 4 */}
-      <View style={styles.navBar}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.navBtn}>
-          <Text style={styles.cancelText}>Cancel</Text>
+      {/* App Themed Header */}
+      <View style={styles.header}>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
+          <Ionicons name="arrow-back" size={24} color={colors.primaryContainer} />
         </TouchableOpacity>
-        <Text style={styles.navTitle}>Bulk sample</Text>
-        <TouchableOpacity onPress={handleSaveAll} style={styles.navBtn}>
-          <Text style={styles.saveText}>Save</Text>
+        <View style={styles.headerTitleGroup}>
+          <Text style={styles.headerTitle}>Sample Logging</Text>
+          <Text style={styles.headerSubtitle}>{samples.length} Samples in Batch</Text>
+        </View>
+        <TouchableOpacity onPress={handleSaveAll} style={styles.saveHeaderBtn}>
+          <Text style={styles.saveHeaderText}>Save</Text>
         </TouchableOpacity>
       </View>
 
@@ -253,10 +293,17 @@ export default function EditSamplesScreen({ navigation }: any) {
         keyExtractor={(item) => item.id}
         ListHeaderComponent={renderHeader}
         renderItem={renderSampleItem}
-        ItemSeparatorComponent={() => <View style={styles.cardSeparator} />}
         contentContainerStyle={styles.scrollList}
         showsVerticalScrollIndicator={false}
       />
+
+      {/* Floating Bottom Action Bar */}
+      <View style={styles.bottomBar}>
+        <TouchableOpacity style={styles.applyButton} onPress={handleSaveAll}>
+          <Ionicons name="checkmark-done" size={20} color="#fff" style={{ marginRight: 8 }} />
+          <Text style={styles.applyButtonText}>Save & Done</Text>
+        </TouchableOpacity>
+      </View>
 
       {/* Quick Auto-fill Modal */}
       <Modal visible={autoFillModalVisible} transparent animationType="fade">
@@ -297,175 +344,201 @@ export default function EditSamplesScreen({ navigation }: any) {
 }
 
 const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: '#EDF2F7' },
-  navBar: {
+  safeArea: { flex: 1, backgroundColor: colors.background },
+  header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 16,
-    height: 52,
+    height: 64,
+    backgroundColor: colors.surfaceContainerLowest,
     borderBottomWidth: 1,
-    borderBottomColor: '#CBD5E1',
-    backgroundColor: '#FFFFFF',
+    borderBottomColor: colors.outlineVariant,
   },
-  navBtn: { paddingVertical: 6, paddingHorizontal: 4 },
-  cancelText: { color: '#0284c7', fontSize: 16, fontWeight: '500' },
-  saveText: { color: '#0284c7', fontSize: 16, fontWeight: '600' },
-  navTitle: { fontSize: 18, fontWeight: 'bold', color: colors.onSurface },
-  scrollList: { paddingBottom: 60 },
-  configBox: {
-    backgroundColor: '#F8FAFC',
-    padding: 14,
-    borderBottomWidth: 1,
-    borderBottomColor: '#E2E8F0',
-    gap: 8,
+  backBtn: { padding: 8, borderRadius: 20 },
+  headerTitleGroup: { alignItems: 'center' },
+  headerTitle: { fontSize: 18, fontWeight: 'bold', color: colors.onSurface },
+  headerSubtitle: { fontSize: 12, color: colors.secondary, marginTop: 2 },
+  saveHeaderBtn: { 
+    backgroundColor: colors.primaryContainer, 
+    paddingHorizontal: 16, 
+    paddingVertical: 8, 
+    borderRadius: 6 
   },
-  configRow: {
+  saveHeaderText: { color: colors.onPrimary, fontSize: 14, fontWeight: '700' },
+  scrollList: { padding: 16, paddingBottom: 110 },
+  headerSectionsWrapper: { marginBottom: 6 },
+  card: {
+    backgroundColor: colors.surfaceContainerLowest,
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 14,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 6,
+    elevation: 2,
+  },
+  cardHeaderRow: {
     flexDirection: 'row',
     alignItems: 'center',
-  },
-  configLabel: {
-    width: 110,
-    fontSize: 14,
-    color: '#334155',
-    fontWeight: '500',
-  },
-  configSubLabel: {
-    width: 100,
-    marginLeft: 10,
-    fontSize: 13,
-    color: '#64748B',
-  },
-  configInput: {
-    flex: 1,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-    borderRadius: 4,
-    backgroundColor: '#FFFFFF',
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    fontSize: 14,
-    color: '#1E293B',
-  },
-  configSubInput: {
-    flex: 1,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-    borderRadius: 4,
-    backgroundColor: '#FFFFFF',
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    fontSize: 14,
-    color: '#1E293B',
-  },
-  autoFillSection: {
-    padding: 16,
-    alignItems: 'center',
-  },
-  editSamplesHeaderTitle: {
-    color: '#0284c7',
-    fontSize: 16,
-    fontWeight: '500',
-    marginBottom: 8,
-  },
-  autoFillHeader: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: '#1E293B',
+    borderBottomWidth: 1,
+    borderBottomColor: '#F1F5F9',
+    paddingBottom: 8,
     marginBottom: 12,
   },
+  cardTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: colors.onSurface,
+  },
+  configGrid: { gap: 10 },
+  inputGroup: { marginBottom: 4 },
+  inputLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.secondary,
+    marginBottom: 4,
+  },
+  input: {
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+    borderRadius: 6,
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    fontSize: 14,
+    color: colors.onSurface,
+  },
+  row: { flexDirection: 'row' },
   autoFillGrid: {
     flexDirection: 'row',
-    width: '100%',
-    gap: 12,
-  },
-  autoFillCol: {
-    flex: 1,
+    flexWrap: 'wrap',
     gap: 8,
   },
   autoFillBtn: {
-    borderWidth: 1,
-    borderColor: '#0284c7',
-    borderRadius: 8,
-    paddingVertical: 8,
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#F0F9FF',
+    backgroundColor: '#E6F8F7',
+    borderWidth: 1,
+    borderColor: colors.primaryContainer,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
   },
   autoFillBtnText: {
-    color: '#0284c7',
-    fontSize: 14,
+    color: colors.primary,
+    fontSize: 13,
     fontWeight: '600',
+  },
+  samplesListHeader: {
+    marginTop: 8,
+    marginBottom: 12,
+    paddingHorizontal: 4,
+  },
+  samplesListTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: colors.secondary,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
   sampleCard: {
-    backgroundColor: '#EDF2F7',
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    gap: 10,
-  },
-  cardSeparator: {
-    height: 2,
-    backgroundColor: '#334155',
-    marginVertical: 4,
-  },
-  fieldRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  fieldLabel: {
-    width: 95,
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#1E293B',
-  },
-  fieldInput: {
+    backgroundColor: colors.surfaceContainerLowest,
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 12,
     borderWidth: 1,
-    borderColor: '#CBD5E1',
-    borderRadius: 4,
-    backgroundColor: '#F8FAFC',
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    fontSize: 14,
-    color: '#1E293B',
-  },
-  smallInput: {
-    width: 80,
-    textAlign: 'center',
-    marginRight: 8,
-  },
-  unitInput: {
-    width: 80,
-    textAlign: 'center',
-  },
-  notesInput: {
-    flex: 1,
-    minHeight: 50,
-    textAlignVertical: 'top',
-  },
-  togglesRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingLeft: 4,
-    paddingRight: 16,
-  },
-  toggleGroup: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    borderColor: '#E2E8F0',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 6,
+    elevation: 2,
     gap: 8,
   },
-  toggleText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#1E293B',
+  sampleCardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    borderBottomWidth: 1,
+    borderBottomColor: '#F1F5F9',
+    paddingBottom: 8,
+    marginBottom: 4,
   },
-  addNotesBtn: {
-    marginLeft: 14,
+  sampleBadge: {
+    backgroundColor: '#E6F8F7',
+    paddingHorizontal: 10,
     paddingVertical: 4,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#b2ebe5',
   },
-  addNotesText: {
-    color: '#0284c7',
-    fontSize: 14,
-    fontWeight: '500',
+  sampleBadgeText: {
+    color: colors.primary,
+    fontWeight: '700',
+    fontSize: 13,
+  },
+  togglesContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 16,
+  },
+  toggleItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  toggleItemLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.secondary,
+  },
+  notesToggleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 4,
+    marginTop: 2,
+  },
+  notesToggleText: {
+    color: colors.primaryContainer,
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  notesArea: {
+    minHeight: 56,
+    textAlignVertical: 'top',
+  },
+  bottomBar: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: colors.surfaceContainerLowest,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderTopWidth: 1,
+    borderTopColor: colors.outlineVariant,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 4,
+  },
+  applyButton: {
+    backgroundColor: colors.primaryContainer,
+    height: 48,
+    borderRadius: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  applyButtonText: {
+    color: colors.onPrimary,
+    fontSize: 15,
+    fontWeight: '700',
   },
   modalOverlay: {
     flex: 1,
@@ -481,8 +554,8 @@ const styles = StyleSheet.create({
     width: '100%',
     maxWidth: 360,
   },
-  modalTitle: { fontSize: 18, fontWeight: 'bold', color: '#1E293B', marginBottom: 4 },
-  modalSubtitle: { fontSize: 13, color: '#64748B', marginBottom: 14 },
+  modalTitle: { fontSize: 18, fontWeight: 'bold', color: colors.onSurface, marginBottom: 4 },
+  modalSubtitle: { fontSize: 13, color: colors.secondary, marginBottom: 14 },
   modalInput: {
     borderWidth: 1,
     borderColor: '#CBD5E1',
@@ -490,12 +563,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 10,
     fontSize: 15,
-    color: '#1E293B',
+    color: colors.onSurface,
     marginBottom: 16,
   },
   modalActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 10 },
   modalCancelBtn: { paddingVertical: 8, paddingHorizontal: 14 },
-  modalCancelText: { color: '#64748B', fontSize: 14, fontWeight: '500' },
-  modalApplyBtn: { backgroundColor: '#0284c7', paddingVertical: 8, paddingHorizontal: 16, borderRadius: 6 },
-  modalApplyText: { color: '#FFFFFF', fontSize: 14, fontWeight: '600' },
+  modalCancelText: { color: colors.secondary, fontSize: 14, fontWeight: '500' },
+  modalApplyBtn: { backgroundColor: colors.primaryContainer, paddingVertical: 8, paddingHorizontal: 16, borderRadius: 6 },
+  modalApplyText: { color: colors.onPrimary, fontSize: 14, fontWeight: '600' },
 });
