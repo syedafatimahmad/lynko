@@ -8,6 +8,7 @@ import SignInScreen from '../screens/SignInScreen';
 import NewProjectScreen from '../screens/NewProjectScreen';
 import ChainOfCustodyScreen from '../screens/ChainOfCustodyScreen';
 import EditSamplesScreen from '../screens/EditSamplesScreen';
+import VerifyEmailScreen from '../screens/VerifyEmailScreen';
 
 const Stack = createNativeStackNavigator();
 
@@ -18,12 +19,16 @@ export default function RootNavigator() {
     <NavigationContainer>
       <Stack.Navigator screenOptions={{ headerShown: false }}>
         {user ? (
-          <>
-            <Stack.Screen name="AppTabs" component={AppTabs} />
-            <Stack.Screen name="NewProject" component={NewProjectScreen} options={{ presentation: 'modal' }} />
-            <Stack.Screen name="ChainOfCustody" component={ChainOfCustodyScreen} />
-            <Stack.Screen name="EditSamples" component={EditSamplesScreen} />
-          </>
+          user.emailVerified ? (
+            <>
+              <Stack.Screen name="AppTabs" component={AppTabs} />
+              <Stack.Screen name="NewProject" component={NewProjectScreen} options={{ presentation: 'modal' }} />
+              <Stack.Screen name="ChainOfCustody" component={ChainOfCustodyScreen} />
+              <Stack.Screen name="EditSamples" component={EditSamplesScreen} />
+            </>
+          ) : (
+            <Stack.Screen name="VerifyEmail" component={VerifyEmailScreen} />
+          )
         ) : (
           <Stack.Screen name="SignIn" component={SignInScreen} />
         )}
