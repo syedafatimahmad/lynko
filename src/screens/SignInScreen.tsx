@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, ActivityIndicator, Image, Alert } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, ActivityIndicator, Image } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { signInWithEmailAndPassword, createUserWithEmailAndPassword, sendEmailVerification, sendPasswordResetEmail } from 'firebase/auth';
 import { doc, setDoc, getDoc, serverTimestamp } from 'firebase/firestore';
@@ -9,41 +9,74 @@ import { useLynkoStore } from '../store/lynkoStore';
 import { colors } from '../theme/colors';
 import { Ionicons } from '@expo/vector-icons';
 
+function getFriendlyErrorMessage(err: any): string {
+  if (!err) return '';
+  const code = err.code || '';
+  const msg = err.message || '';
+
+  if (code === 'auth/invalid-credential' || code === 'auth/wrong-password' || code === 'auth/user-not-found') {
+    return 'Invalid email or password. Please verify your credentials or tap "Forgot password?" below.';
+  }
+  if (code === 'auth/email-already-in-use') {
+    return 'An account with this email already exists. Please tap "sign in to existing account" above.';
+  }
+  if (code === 'auth/weak-password') {
+    return 'Password is too weak. Please use at least 6 characters.';
+  }
+  if (code === 'auth/invalid-email') {
+    return 'Please enter a valid email address format (e.g. inspector@lynko.inc).';
+  }
+  if (code === 'auth/too-many-requests') {
+    return 'Access temporarily disabled due to many failed attempts. Please wait a minute or reset your password.';
+  }
+  if (code === 'auth/network-request-failed') {
+    return 'Network connection error. Please check your internet connection and try again.';
+  }
+  
+  // Clean up any remaining Firebase prefixes
+  return msg.replace(/^Firebase:\s*Error\s*\([^)]*\)\s*:?\s*/i, '').trim() || 'Authentication failed. Please try again.';
+}
+
 export default function SignInScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [successMessage, setSuccessMessage] = useState('');
   const [isRegistering, setIsRegistering] = useState(false);
   const setUser = useAuthStore((state) => state.setUser);
   const setUserData = useAuthStore((state) => state.setUserData);
   const syncFromFirestore = useLynkoStore((state) => state.syncFromFirestore);
 
   const handleAuth = async () => {
-    if (!email || !password) {
-      setError('Please enter email and password');
+    if (!email.trim() || !password) {
+      setError('Please enter your email address and password.');
+      setSuccessMessage('');
       return;
     }
     
-    // Basic email validation regex
+    // Email regex validation
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(email)) {
-      setError('Please enter a valid email address');
+    if (!emailRegex.test(email.trim())) {
+      setError('Please enter a valid email address (e.g. name@company.com).');
+      setSuccessMessage('');
       return;
     }
 
     setLoading(true);
     setError('');
+    setSuccessMessage('');
+
     try {
       let userCredential;
       let userDataObj: any;
 
       if (isRegistering) {
-        userCredential = await createUserWithEmailAndPassword(auth, email, password);
+        userCredential = await createUserWithEmailAndPassword(auth, email.trim(), password);
         const newUserData = {
           uid: userCredential.user.uid,
           email: userCredential.user.email,
-          username: email.split('@')[0], 
+          username: email.trim().split('@')[0], 
           role: 'user', 
           createdAt: serverTimestamp()
         };
@@ -52,10 +85,14 @@ export default function SignInScreen() {
         userDataObj = newUserData;
         
         // Send email verification
-        await sendEmailVerification(userCredential.user);
-        Alert.alert("Verify Email", "We've sent a verification link to your email. Please check your inbox.");
+        try {
+          await sendEmailVerification(userCredential.user);
+          setSuccessMessage('Account created! A verification link has been sent to your email.');
+        } catch (emailErr) {
+          console.log('Email verification send notice:', emailErr);
+        }
       } else {
-        userCredential = await signInWithEmailAndPassword(auth, email, password);
+        userCredential = await signInWithEmailAndPassword(auth, email.trim(), password);
         const userDocRef = doc(db, 'users', userCredential.user.uid);
         const docSnap = await getDoc(userDocRef);
         if (docSnap.exists()) {
@@ -69,22 +106,24 @@ export default function SignInScreen() {
       setUser(userCredential.user);
       setUserData(userDataObj);
     } catch (err: any) {
-      setError(err.message);
+      setError(getFriendlyErrorMessage(err));
     } finally {
       setLoading(false);
     }
   };
 
   const handleForgotPassword = async () => {
-    if (!email) {
-      setError('Please enter your email address first to reset your password');
+    if (!email.trim()) {
+      setError('Please enter your email address above to receive a password reset link.');
+      setSuccessMessage('');
       return;
     }
+    setError('');
     try {
-      await sendPasswordResetEmail(auth, email);
-      Alert.alert("Check your email", "A password reset link has been sent to " + email);
+      await sendPasswordResetEmail(auth, email.trim());
+      setSuccessMessage(`Password reset email sent to ${email.trim()}. Please check your inbox and spam folder.`);
     } catch (err: any) {
-      setError(err.message);
+      setError(getFriendlyErrorMessage(err));
     }
   };
 
@@ -101,7 +140,11 @@ export default function SignInScreen() {
             <Text style={styles.title}>{isRegistering ? 'Create an account' : 'Sign in to your account'}</Text>
             <View style={styles.subtitleRow}>
               <Text style={styles.subtitle}>Or </Text>
-              <TouchableOpacity onPress={() => setIsRegistering(!isRegistering)}>
+              <TouchableOpacity onPress={() => {
+                setIsRegistering(!isRegistering);
+                setError('');
+                setSuccessMessage('');
+              }}>
                 <Text style={styles.linkText}>
                   {isRegistering ? 'sign in to existing account' : 'create a new account'}
                 </Text>
@@ -109,7 +152,21 @@ export default function SignInScreen() {
             </View>
           </View>
 
-          {error ? <Text style={styles.error}>{error}</Text> : null}
+          {/* Styled Error Banner */}
+          {error ? (
+            <View style={styles.alertBannerError}>
+              <Ionicons name="alert-circle" size={18} color={colors.error} style={styles.bannerIcon} />
+              <Text style={styles.alertTextError}>{error}</Text>
+            </View>
+          ) : null}
+
+          {/* Styled Success Banner */}
+          {successMessage ? (
+            <View style={styles.alertBannerSuccess}>
+              <Ionicons name="checkmark-circle" size={18} color="#059669" style={styles.bannerIcon} />
+              <Text style={styles.alertTextSuccess}>{successMessage}</Text>
+            </View>
+          ) : null}
 
           <View style={styles.form}>
             <View style={styles.inputContainer}>
@@ -121,7 +178,10 @@ export default function SignInScreen() {
                   placeholder="inspector@lynko.inc"
                   placeholderTextColor={colors.outline}
                   value={email}
-                  onChangeText={setEmail}
+                  onChangeText={(text) => {
+                    setEmail(text);
+                    if (error) setError('');
+                  }}
                   autoCapitalize="none"
                   keyboardType="email-address"
                 />
@@ -137,7 +197,10 @@ export default function SignInScreen() {
                   placeholder="••••••••"
                   placeholderTextColor={colors.outline}
                   value={password}
-                  onChangeText={setPassword}
+                  onChangeText={(text) => {
+                    setPassword(text);
+                    if (error) setError('');
+                  }}
                   secureTextEntry
                 />
               </View>
@@ -179,7 +242,7 @@ const styles = StyleSheet.create({
   },
   card: {
     backgroundColor: colors.surfaceContainerLowest,
-    padding: 32,
+    padding: 28,
     borderRadius: 12,
     borderWidth: 1,
     borderColor: colors.outlineVariant,
@@ -191,15 +254,15 @@ const styles = StyleSheet.create({
   },
   header: {
     alignItems: 'center',
-    marginBottom: 32,
+    marginBottom: 24,
   },
   logo: {
-    height: 96,
+    height: 84,
     width: '100%',
-    marginBottom: 16,
+    marginBottom: 14,
   },
   title: {
-    fontSize: 24,
+    fontSize: 22,
     fontWeight: '700',
     color: colors.onSurface,
     textAlign: 'center',
@@ -216,13 +279,52 @@ const styles = StyleSheet.create({
   linkText: {
     fontSize: 14,
     color: colors.primaryContainer,
+    fontWeight: '600',
+  },
+  alertBannerError: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fef2f2',
+    borderWidth: 1,
+    borderColor: '#fca5a5',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginBottom: 16,
+  },
+  alertTextError: {
+    flex: 1,
+    color: colors.error,
+    fontSize: 13,
     fontWeight: '500',
+    lineHeight: 18,
+  },
+  alertBannerSuccess: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#ecfdf5',
+    borderWidth: 1,
+    borderColor: '#6ee7b7',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginBottom: 16,
+  },
+  alertTextSuccess: {
+    flex: 1,
+    color: '#065f46',
+    fontSize: 13,
+    fontWeight: '500',
+    lineHeight: 18,
+  },
+  bannerIcon: {
+    marginRight: 8,
   },
   form: {
     gap: 16,
   },
   inputContainer: {
-    gap: 4,
+    gap: 6,
   },
   label: {
     fontSize: 13,
@@ -234,7 +336,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderWidth: 1,
     borderColor: colors.outlineVariant,
-    borderRadius: 4,
+    borderRadius: 6,
     backgroundColor: colors.surfaceContainerLowest,
   },
   inputIcon: {
@@ -244,7 +346,7 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingVertical: 12,
     paddingHorizontal: 12,
-    fontSize: 16,
+    fontSize: 15,
     color: colors.onSurface,
   },
   actionsRow: {
@@ -272,7 +374,7 @@ const styles = StyleSheet.create({
   button: {
     backgroundColor: colors.primaryContainer,
     height: 48,
-    borderRadius: 4,
+    borderRadius: 6,
     alignItems: 'center',
     justifyContent: 'center',
     marginTop: 8,
@@ -281,19 +383,5 @@ const styles = StyleSheet.create({
     color: colors.onPrimary,
     fontSize: 15,
     fontWeight: '600',
-  },
-  error: {
-    color: colors.error,
-    textAlign: 'center',
-    marginBottom: 16,
-  },
-  devButton: {
-    marginTop: 16,
-    alignItems: 'center',
-  },
-  devButtonText: {
-    color: colors.textSecondary,
-    fontSize: 14,
-    fontWeight: '500',
   },
 });

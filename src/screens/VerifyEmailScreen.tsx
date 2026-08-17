@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Alert } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { sendEmailVerification } from 'firebase/auth';
 import { auth } from '../config/firebase';
@@ -11,6 +11,9 @@ import { Ionicons } from '@expo/vector-icons';
 export default function VerifyEmailScreen() {
   const [loading, setLoading] = useState(false);
   const [resending, setResending] = useState(false);
+  const [infoMessage, setInfoMessage] = useState('');
+  const [errorMessage, setErrorMessage] = useState('');
+  
   const setUser = useAuthStore((state) => state.setUser);
   const logout = useAuthStore((state) => state.logout);
   const clearStore = useLynkoStore((state) => state.clearStore);
@@ -19,15 +22,17 @@ export default function VerifyEmailScreen() {
     if (!auth.currentUser) return;
     
     setLoading(true);
+    setInfoMessage('');
+    setErrorMessage('');
     try {
       await auth.currentUser.reload();
       if (auth.currentUser.emailVerified) {
         setUser({ ...auth.currentUser });
       } else {
-        Alert.alert("Not Verified", "Your email is still not verified. Please check your inbox and spam folder.");
+        setErrorMessage('Email is not verified yet. Please click the link in your email (check Spam folder if needed).');
       }
     } catch (error: any) {
-      Alert.alert("Error", error.message);
+      setErrorMessage(error.message || 'Could not verify status. Please check your internet connection.');
     } finally {
       setLoading(false);
     }
@@ -37,14 +42,16 @@ export default function VerifyEmailScreen() {
     if (!auth.currentUser) return;
     
     setResending(true);
+    setInfoMessage('');
+    setErrorMessage('');
     try {
       await sendEmailVerification(auth.currentUser);
-      Alert.alert("Sent!", "A new verification link has been sent to your email.");
+      setInfoMessage('A fresh verification link has been sent to your email. Please check your Inbox and Spam/Junk folder.');
     } catch (error: any) {
       if (error.code === 'auth/too-many-requests') {
-        Alert.alert("Wait a moment", "We already sent an email recently. Please wait a bit before requesting another.");
+        setErrorMessage('Verification email already sent recently. Please check your spam folder or wait 1-2 minutes.');
       } else {
-        Alert.alert("Error", error.message);
+        setErrorMessage(error.message || 'Failed to resend verification email.');
       }
     } finally {
       setResending(false);
@@ -67,7 +74,7 @@ export default function VerifyEmailScreen() {
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.container}>
         <View style={styles.iconContainer}>
-          <Ionicons name="mail-unread-outline" size={80} color={colors.primaryContainer} />
+          <Ionicons name="mail-unread-outline" size={72} color={colors.primaryContainer} />
         </View>
         
         <Text style={styles.title}>Verify your email</Text>
@@ -77,8 +84,23 @@ export default function VerifyEmailScreen() {
         <Text style={styles.emailText}>{auth.currentUser?.email}</Text>
         
         <Text style={styles.instructions}>
-          Please click the link in that email to verify your account and access the app.
+          Please tap the confirmation link in the email to activate your account and access the Lynko inspection suite.
         </Text>
+
+        {/* In-app Notification Banners */}
+        {infoMessage ? (
+          <View style={styles.alertBannerSuccess}>
+            <Ionicons name="checkmark-circle" size={18} color="#059669" style={{ marginRight: 8 }} />
+            <Text style={styles.alertTextSuccess}>{infoMessage}</Text>
+          </View>
+        ) : null}
+
+        {errorMessage ? (
+          <View style={styles.alertBannerError}>
+            <Ionicons name="alert-circle" size={18} color={colors.error} style={{ marginRight: 8 }} />
+            <Text style={styles.alertTextError}>{errorMessage}</Text>
+          </View>
+        ) : null}
 
         <View style={styles.actions}>
           <TouchableOpacity style={styles.primaryButton} onPress={checkVerification} disabled={loading}>
@@ -92,18 +114,18 @@ export default function VerifyEmailScreen() {
 
         {/* --- DEV BYPASS --- */}
         <TouchableOpacity 
-          style={{ marginTop: 20, padding: 10, backgroundColor: '#ffebee', borderRadius: 8 }}
+          style={styles.devBypassButton}
           onPress={() => {
             if (auth.currentUser) {
               setUser({ ...auth.currentUser, emailVerified: true } as any);
             }
           }}
         >
-          <Text style={{ color: '#c62828', fontWeight: 'bold' }}>[DEV MODE] Bypass Verification</Text>
+          <Text style={styles.devBypassText}>[DEV MODE] Instant Test Access</Text>
         </TouchableOpacity>
 
         <TouchableOpacity style={styles.logoutButton} onPress={handleSignOut}>
-          <Text style={styles.logoutText}>Sign Out</Text>
+          <Text style={styles.logoutText}>Sign Out / Switch Account</Text>
         </TouchableOpacity>
       </View>
     </SafeAreaView>
@@ -122,67 +144,107 @@ const styles = StyleSheet.create({
     padding: 24,
   },
   iconContainer: {
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-    backgroundColor: colors.primaryContainer + '15',
+    width: 108,
+    height: 108,
+    borderRadius: 54,
+    backgroundColor: '#e6fbf9',
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 32,
+    marginBottom: 24,
+    borderWidth: 1,
+    borderColor: '#c2f4ee',
   },
   title: {
-    fontSize: 28,
+    fontSize: 26,
     fontWeight: '700',
     color: colors.onSurface,
-    marginBottom: 12,
+    marginBottom: 8,
     textAlign: 'center',
   },
   subtitle: {
-    fontSize: 16,
+    fontSize: 15,
     color: colors.onSurfaceVariant,
     textAlign: 'center',
   },
   emailText: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: colors.onSurface,
+    fontSize: 16,
+    fontWeight: '700',
+    color: colors.primaryContainer,
     marginTop: 4,
-    marginBottom: 24,
+    marginBottom: 16,
     textAlign: 'center',
   },
   instructions: {
-    fontSize: 15,
-    color: colors.onSurfaceVariant,
+    fontSize: 14,
+    color: colors.secondary,
     textAlign: 'center',
-    lineHeight: 22,
-    marginBottom: 40,
-    paddingHorizontal: 20,
+    lineHeight: 20,
+    marginBottom: 20,
+    paddingHorizontal: 12,
+  },
+  alertBannerSuccess: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#ecfdf5',
+    borderWidth: 1,
+    borderColor: '#6ee7b7',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginBottom: 16,
+    width: '100%',
+  },
+  alertTextSuccess: {
+    flex: 1,
+    color: '#065f46',
+    fontSize: 13,
+    fontWeight: '500',
+    lineHeight: 18,
+  },
+  alertBannerError: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fef2f2',
+    borderWidth: 1,
+    borderColor: '#fca5a5',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginBottom: 16,
+    width: '100%',
+  },
+  alertTextError: {
+    flex: 1,
+    color: colors.error,
+    fontSize: 13,
+    fontWeight: '500',
+    lineHeight: 18,
   },
   actions: {
     width: '100%',
-    gap: 16,
+    gap: 12,
   },
   primaryButton: {
     backgroundColor: colors.primaryContainer,
-    height: 56,
-    borderRadius: 12,
+    height: 50,
+    borderRadius: 8,
     alignItems: 'center',
     justifyContent: 'center',
     width: '100%',
     shadowColor: colors.primaryContainer,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
-    elevation: 4,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 4,
+    elevation: 3,
   },
   primaryButtonText: {
     color: colors.onPrimary,
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '600',
   },
   secondaryButton: {
-    height: 56,
-    borderRadius: 12,
+    height: 50,
+    borderRadius: 8,
     alignItems: 'center',
     justifyContent: 'center',
     width: '100%',
@@ -192,16 +254,30 @@ const styles = StyleSheet.create({
   },
   secondaryButtonText: {
     color: colors.primaryContainer,
-    fontSize: 16,
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  devBypassButton: {
+    marginTop: 16,
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    backgroundColor: '#f1f5f9',
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#cbd5e1',
+  },
+  devBypassText: {
+    color: '#475569',
+    fontSize: 13,
     fontWeight: '600',
   },
   logoutButton: {
-    marginTop: 40,
-    padding: 12,
+    marginTop: 20,
+    padding: 8,
   },
   logoutText: {
-    color: colors.error,
-    fontSize: 15,
+    color: colors.secondary,
+    fontSize: 14,
     fontWeight: '500',
   },
 });
