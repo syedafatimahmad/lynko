@@ -26,7 +26,6 @@
     },
     "plugins": [
       "expo-asset",
-      "expo-web-browser",
       "expo-font"
     ],
     "extra": {
