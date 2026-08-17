@@ -371,6 +371,7 @@ const styles = StyleSheet.create({
   photoThumbnail: { width: '100%', height: '100%', resizeMode: 'cover' },
   photoDeleteBtn: { position: 'absolute', top: 2, right: 2, backgroundColor: 'rgba(0,0,0,0.6)', width: 20, height: 20, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
   photoBadge: { position: 'absolute', bottom: 2, left: 2, backgroundColor: 'rgba(0,0,0,0.6)', color: '#fff', fontSize: 9, fontWeight: 'bold', paddingHorizontal: 4, borderRadius: 3 },
+  emptyPhotosText: { color: colors.secondary, fontSize: 13, fontStyle: 'italic', textAlign: 'center', marginVertical: 8 },
   editSamplesRow: {
     flexDirection: 'row',
     alignItems: 'center',

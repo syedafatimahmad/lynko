@@ -1,11 +1,18 @@
 import { initializeApp } from 'firebase/app';
-import { getAuth, initializeAuth, getReactNativePersistence } from 'firebase/auth';
+import { getAuth } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Platform } from 'react-native';
+
+const decodeBase64 = (str: string) => {
+  try {
+    if (typeof atob !== 'undefined') {
+      return atob(str);
+    }
+  } catch {}
+  return 'AIzaSyA7Txnij795e9RXR7_Fdreo764gzWeI6Ow';
+};
 
 const firebaseConfig = {
-  apiKey: process.env.EXPO_PUBLIC_FIREBASE_API_KEY || Buffer.from('QUl6YVN5QTdUeG5pajc5NWU5UlhSN19GZHJlbzc2NGd6V2VJNk93', 'base64').toString('ascii'),
+  apiKey: process.env.EXPO_PUBLIC_FIREBASE_API_KEY || decodeBase64('QUl6YVN5QTdUeG5pajc5NWU5UlhSN19GZHJlbzc2NGd6V2VJNk93'),
   authDomain: process.env.EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN || "lynko-e42be.firebaseapp.com",
   projectId: process.env.EXPO_PUBLIC_FIREBASE_PROJECT_ID || "lynko-e42be",
   storageBucket: process.env.EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET || "lynko-e42be.firebasestorage.app",
@@ -15,14 +22,5 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig);
 
-let auth: ReturnType<typeof getAuth>;
-if (Platform.OS === 'web') {
-  auth = getAuth(app);
-} else {
-  auth = initializeAuth(app, {
-    persistence: getReactNativePersistence(AsyncStorage)
-  });
-}
-
+export const auth = getAuth(app);
 export const db = getFirestore(app);
-export { auth };
