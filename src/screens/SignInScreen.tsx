@@ -75,6 +75,8 @@ export default function SignInScreen() {
       console.error('Sign in error:', err);
       if (err.code === 'auth/popup-closed-by-user') {
         setError('Sign-in was cancelled.');
+      } else if (err.code === 'auth/account-exists-with-different-credential') {
+        setError('This email was previously created with email/password. Please delete the old test user in Firebase Console (Authentication > Users) or enable account linking in Firebase Settings.');
       } else if (err.code === 'auth/network-request-failed') {
         setError('Network error. Please check your internet connection.');
       } else {
