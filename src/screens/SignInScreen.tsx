@@ -1,17 +1,13 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator, Image, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { GoogleAuthProvider, signInWithPopup, signInWithCredential, signInWithEmailAndPassword } from 'firebase/auth';
+import { GoogleAuthProvider, signInWithPopup, signInWithRedirect } from 'firebase/auth';
 import { doc, setDoc, getDoc, serverTimestamp } from 'firebase/firestore';
-import * as WebBrowser from 'expo-web-browser';
-import * as Google from 'expo-auth-session/providers/google';
 import { auth, db } from '../config/firebase';
 import { useAuthStore } from '../store/authStore';
 import { useLynkoStore } from '../store/lynkoStore';
 import { colors } from '../theme/colors';
 import { Ionicons } from '@expo/vector-icons';
-
-WebBrowser.maybeCompleteAuthSession();
 
 export default function SignInScreen() {
   const [loading, setLoading] = useState(false);
@@ -20,35 +16,6 @@ export default function SignInScreen() {
   const setUser = useAuthStore((state) => state.setUser);
   const setUserData = useAuthStore((state) => state.setUserData);
   const syncFromFirestore = useLynkoStore((state) => state.syncFromFirestore);
-
-  // Google Auth Request hook for Expo Native
-  const [request, response, promptAsync] = Google.useAuthRequest({
-    webClientId: '630479584378-placeholder.apps.googleusercontent.com',
-    androidClientId: '630479584378-placeholder.apps.googleusercontent.com',
-    iosClientId: '630479584378-placeholder.apps.googleusercontent.com',
-  });
-
-  useEffect(() => {
-    if (response?.type === 'success') {
-      const { id_token } = response.params;
-      if (id_token) {
-        handleCredentialLogin(id_token);
-      }
-    }
-  }, [response]);
-
-  const handleCredentialLogin = async (idToken: string) => {
-    setLoading(true);
-    setError('');
-    try {
-      const credential = GoogleAuthProvider.credential(idToken);
-      const userCredential = await signInWithCredential(auth, credential);
-      await finishLogin(userCredential.user);
-    } catch (err: any) {
-      setError(err.message || 'Google authentication failed.');
-      setLoading(false);
-    }
-  };
 
   const finishLogin = async (firebaseUser: any) => {
     try {
@@ -86,29 +53,28 @@ export default function SignInScreen() {
     setError('');
 
     try {
+      const provider = new GoogleAuthProvider();
+      provider.setCustomParameters({ prompt: 'select_account' });
+      
       if (Platform.OS === 'web') {
-        const provider = new GoogleAuthProvider();
-        provider.setCustomParameters({ prompt: 'select_account' });
         const userCredential = await signInWithPopup(auth, provider);
         await finishLogin(userCredential.user);
       } else {
-        // Mobile flow
         try {
-          const result = await promptAsync();
-          if (result.type !== 'success') {
-            setLoading(false);
-          }
-        } catch (mobileErr: any) {
-          // If custom OAuth scheme not configured yet on device, fallback to web popup flow
-          const provider = new GoogleAuthProvider();
           const userCredential = await signInWithPopup(auth, provider);
           await finishLogin(userCredential.user);
+        } catch (popupErr: any) {
+          if (popupErr.code === 'auth/popup-blocked') {
+            await signInWithRedirect(auth, provider);
+          } else {
+            throw popupErr;
+          }
         }
       }
     } catch (err: any) {
       console.error('Sign in error:', err);
       if (err.code === 'auth/popup-closed-by-user') {
-        setError('Sign-in cancelled.');
+        setError('Sign-in was cancelled.');
       } else if (err.code === 'auth/network-request-failed') {
         setError('Network error. Please check your internet connection.');
       } else {
