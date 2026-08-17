@@ -1,7 +1,26 @@
 import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator, Image, Platform } from 'react-native';
+import { 
+  View, 
+  Text, 
+  TextInput, 
+  TouchableOpacity, 
+  StyleSheet, 
+  ActivityIndicator, 
+  Image, 
+  Platform,
+  ScrollView,
+  KeyboardAvoidingView,
+  Alert
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { GoogleAuthProvider, signInWithPopup, signInWithRedirect } from 'firebase/auth';
+import { 
+  GoogleAuthProvider, 
+  signInWithPopup, 
+  signInWithRedirect,
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
+  sendPasswordResetEmail
+} from 'firebase/auth';
 import { doc, setDoc, getDoc, serverTimestamp } from 'firebase/firestore';
 import { auth, db } from '../config/firebase';
 import { useAuthStore } from '../store/authStore';
@@ -10,8 +29,13 @@ import { colors } from '../theme/colors';
 import { Ionicons } from '@expo/vector-icons';
 
 export default function SignInScreen() {
+  const [isRegistering, setIsRegistering] = useState(false);
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [infoMessage, setInfoMessage] = useState('');
   
   const setUser = useAuthStore((state) => state.setUser);
   const setUserData = useAuthStore((state) => state.setUserData);
@@ -48,9 +72,71 @@ export default function SignInScreen() {
     }
   };
 
+  const handleEmailAuth = async () => {
+    const cleanEmail = email.trim();
+    if (!cleanEmail) {
+      setError('Please enter your email address.');
+      return;
+    }
+    if (!password || password.length < 6) {
+      setError('Password must be at least 6 characters.');
+      return;
+    }
+
+    setLoading(true);
+    setError('');
+    setInfoMessage('');
+
+    try {
+      if (isRegistering) {
+        // Register new account
+        const userCredential = await createUserWithEmailAndPassword(auth, cleanEmail, password);
+        await finishLogin(userCredential.user);
+      } else {
+        // Sign in existing account
+        const userCredential = await signInWithEmailAndPassword(auth, cleanEmail, password);
+        await finishLogin(userCredential.user);
+      }
+    } catch (err: any) {
+      console.error('Auth error:', err);
+      if (err.code === 'auth/user-not-found' || err.code === 'auth/wrong-password' || err.code === 'auth/invalid-credential') {
+        setError('Invalid email or password. Please check your credentials.');
+      } else if (err.code === 'auth/email-already-in-use') {
+        setError('An account with this email already exists. Please sign in instead.');
+      } else if (err.code === 'auth/weak-password') {
+        setError('Password is too weak. Please use at least 6 characters.');
+      } else if (err.code === 'auth/network-request-failed') {
+        setError('Network error. Please check your internet connection.');
+      } else {
+        setError(err.message || 'Authentication failed. Please try again.');
+      }
+      setLoading(false);
+    }
+  };
+
+  const handleForgotPassword = async () => {
+    const cleanEmail = email.trim();
+    if (!cleanEmail) {
+      setError('Please enter your email address above to receive a reset link.');
+      return;
+    }
+
+    setLoading(true);
+    setError('');
+    try {
+      await sendPasswordResetEmail(auth, cleanEmail);
+      setInfoMessage(`Password reset link sent to ${cleanEmail}. Please check your inbox.`);
+    } catch (err: any) {
+      setError(err.message || 'Could not send reset email.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleGoogleSignIn = async () => {
     setLoading(true);
     setError('');
+    setInfoMessage('');
 
     try {
       const provider = new GoogleAuthProvider();
@@ -72,11 +158,11 @@ export default function SignInScreen() {
         }
       }
     } catch (err: any) {
-      console.error('Sign in error:', err);
+      console.error('Google Sign in error:', err);
       if (err.code === 'auth/popup-closed-by-user') {
         setError('Sign-in was cancelled.');
       } else if (err.code === 'auth/account-exists-with-different-credential') {
-        setError('This email was previously created with email/password. Please delete the old test user in Firebase Console (Authentication > Users) or enable account linking in Firebase Settings.');
+        setError('An account already exists with this email. Please sign in with your email and password.');
       } else if (err.code === 'auth/network-request-failed') {
         setError('Network error. Please check your internet connection.');
       } else {
@@ -88,54 +174,141 @@ export default function SignInScreen() {
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      <View style={styles.container}>
-        <View style={styles.card}>
-          <View style={styles.header}>
-            <Image 
-              source={require('../../assets/lynko-logo.jpg')} 
-              style={styles.logo}
-              resizeMode="contain"
-            />
-            <Text style={styles.title}>Field Inspector Portal</Text>
-            <Text style={styles.subtitle}>Sign in with your Google Account</Text>
-          </View>
-
-          {error ? (
-            <View style={styles.alertBannerError}>
-              <Ionicons name="alert-circle" size={18} color={colors.error} style={{ marginRight: 8 }} />
-              <Text style={styles.alertTextError}>{error}</Text>
+      <KeyboardAvoidingView 
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        style={{ flex: 1 }}
+      >
+        <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+          <View style={styles.card}>
+            {/* Logo & Header */}
+            <View style={styles.header}>
+              <Image 
+                source={require('../../assets/lynko-logo.jpg')} 
+                style={styles.logo}
+                resizeMode="contain"
+              />
+              <Text style={styles.title}>Field Inspector Portal</Text>
+              <Text style={styles.subtitle}>
+                {isRegistering ? 'Create your inspector account' : 'Sign in to access Chain of Custody & Projects'}
+              </Text>
             </View>
-          ) : null}
 
-          <View style={styles.infoBox}>
-            <Ionicons name="shield-checkmark-outline" size={24} color={colors.primaryContainer} />
-            <Text style={styles.infoText}>
-              All Chain of Custody submissions and inspection logs will be securely authenticated and dispatched using your Google account email.
-            </Text>
-          </View>
-
-          <TouchableOpacity 
-            style={styles.googleButton} 
-            onPress={handleGoogleSignIn} 
-            disabled={loading}
-          >
-            {loading ? (
-              <ActivityIndicator color={colors.primaryContainer} />
-            ) : (
-              <View style={styles.googleButtonContent}>
-                <Ionicons name="logo-google" size={22} color="#4285F4" style={{ marginRight: 12 }} />
-                <Text style={styles.googleButtonText}>Sign in with Google</Text>
+            {/* Error & Info Banners */}
+            {error ? (
+              <View style={styles.alertBannerError}>
+                <Ionicons name="alert-circle" size={18} color={colors.error} style={{ marginRight: 8 }} />
+                <Text style={styles.alertTextError}>{error}</Text>
               </View>
-            )}
-          </TouchableOpacity>
+            ) : null}
 
-          <View style={styles.footerNote}>
-            <Text style={styles.footerNoteText}>
-              Lynko • Alpha Environmental Inspection Suite
-            </Text>
+            {infoMessage ? (
+              <View style={styles.alertBannerSuccess}>
+                <Ionicons name="checkmark-circle" size={18} color="#047857" style={{ marginRight: 8 }} />
+                <Text style={styles.alertTextSuccess}>{infoMessage}</Text>
+              </View>
+            ) : null}
+
+            {/* 1-Tap Google Sign-In */}
+            <TouchableOpacity 
+              style={styles.googleButton} 
+              onPress={handleGoogleSignIn} 
+              disabled={loading}
+            >
+              <View style={styles.googleButtonContent}>
+                <Ionicons name="logo-google" size={20} color="#4285F4" style={{ marginRight: 10 }} />
+                <Text style={styles.googleButtonText}>Continue with Google</Text>
+              </View>
+            </TouchableOpacity>
+
+            {/* OR Divider */}
+            <View style={styles.dividerRow}>
+              <View style={styles.dividerLine} />
+              <Text style={styles.dividerText}>or email</Text>
+              <View style={styles.dividerLine} />
+            </View>
+
+            {/* Mode Switcher Tabs */}
+            <View style={styles.tabContainer}>
+              <TouchableOpacity 
+                style={[styles.tabBtn, !isRegistering && styles.tabBtnActive]} 
+                onPress={() => { setIsRegistering(false); setError(''); setInfoMessage(''); }}
+              >
+                <Text style={[styles.tabBtnText, !isRegistering && styles.tabBtnTextActive]}>Sign In</Text>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={[styles.tabBtn, isRegistering && styles.tabBtnActive]} 
+                onPress={() => { setIsRegistering(true); setError(''); setInfoMessage(''); }}
+              >
+                <Text style={[styles.tabBtnText, isRegistering && styles.tabBtnTextActive]}>Create Account</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Email Input */}
+            <View style={styles.inputGroup}>
+              <Text style={styles.inputLabel}>Email Address</Text>
+              <View style={styles.inputWrapper}>
+                <Ionicons name="mail-outline" size={18} color={colors.secondary} style={{ marginRight: 8 }} />
+                <TextInput
+                  style={styles.textInput}
+                  value={email}
+                  onChangeText={setEmail}
+                  placeholder="inspector@alphaenvironmental.us"
+                  placeholderTextColor="#94A3B8"
+                  autoCapitalize="none"
+                  keyboardType="email-address"
+                />
+              </View>
+            </View>
+
+            {/* Password Input */}
+            <View style={styles.inputGroup}>
+              <Text style={styles.inputLabel}>Password</Text>
+              <View style={styles.inputWrapper}>
+                <Ionicons name="lock-closed-outline" size={18} color={colors.secondary} style={{ marginRight: 8 }} />
+                <TextInput
+                  style={styles.textInput}
+                  value={password}
+                  onChangeText={setPassword}
+                  placeholder="••••••••"
+                  placeholderTextColor="#94A3B8"
+                  secureTextEntry={!showPassword}
+                />
+                <TouchableOpacity onPress={() => setShowPassword(!showPassword)} style={{ padding: 4 }}>
+                  <Ionicons name={showPassword ? "eye-off-outline" : "eye-outline"} size={18} color={colors.secondary} />
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            {/* Forgot Password Link (Sign In Mode) */}
+            {!isRegistering ? (
+              <TouchableOpacity style={styles.forgotPasswordBtn} onPress={handleForgotPassword}>
+                <Text style={styles.forgotPasswordText}>Forgot Password?</Text>
+              </TouchableOpacity>
+            ) : null}
+
+            {/* Submit Action Button */}
+            <TouchableOpacity 
+              style={styles.primaryButton} 
+              onPress={handleEmailAuth} 
+              disabled={loading}
+            >
+              {loading ? (
+                <ActivityIndicator color="#FFFFFF" />
+              ) : (
+                <Text style={styles.primaryButtonText}>
+                  {isRegistering ? 'Create Account' : 'Sign In with Email'}
+                </Text>
+              )}
+            </TouchableOpacity>
+
+            <View style={styles.footerNote}>
+              <Text style={styles.footerNoteText}>
+                Lynko • Alpha Environmental Inspection Suite
+              </Text>
+            </View>
           </View>
-        </View>
-      </View>
+        </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
@@ -145,42 +318,43 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background,
   },
-  container: {
-    flex: 1,
+  scrollContent: {
+    flexGrow: 1,
     justifyContent: 'center',
-    padding: 20,
+    padding: 16,
+    paddingVertical: 24,
   },
   card: {
     backgroundColor: colors.surfaceContainerLowest,
-    padding: 32,
+    padding: 24,
     borderRadius: 16,
     borderWidth: 1,
     borderColor: '#E2E8F0',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.08,
-    shadowRadius: 16,
+    shadowOpacity: 0.06,
+    shadowRadius: 12,
     elevation: 3,
   },
   header: {
     alignItems: 'center',
-    marginBottom: 28,
+    marginBottom: 20,
   },
   logo: {
-    height: 90,
+    height: 75,
     width: '100%',
-    marginBottom: 16,
+    marginBottom: 12,
   },
   title: {
-    fontSize: 22,
+    fontSize: 20,
     fontWeight: '700',
     color: colors.onSurface,
     textAlign: 'center',
   },
   subtitle: {
-    fontSize: 14,
+    fontSize: 13,
     color: colors.secondary,
-    marginTop: 6,
+    marginTop: 4,
     textAlign: 'center',
   },
   alertBannerError: {
@@ -192,7 +366,7 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     paddingHorizontal: 12,
     paddingVertical: 10,
-    marginBottom: 18,
+    marginBottom: 14,
   },
   alertTextError: {
     flex: 1,
@@ -200,36 +374,36 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '500',
   },
-  infoBox: {
+  alertBannerSuccess: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#E6F8F7',
-    borderRadius: 8,
-    padding: 14,
-    marginBottom: 28,
+    backgroundColor: '#ecfdf5',
     borderWidth: 1,
-    borderColor: '#b2ebe5',
-    gap: 12,
+    borderColor: '#a7f3d0',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginBottom: 14,
   },
-  infoText: {
+  alertTextSuccess: {
     flex: 1,
+    color: '#047857',
     fontSize: 13,
-    color: '#004d40',
-    lineHeight: 18,
+    fontWeight: '500',
   },
   googleButton: {
     backgroundColor: '#FFFFFF',
-    height: 52,
+    height: 48,
     borderRadius: 8,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1.5,
     borderColor: '#cbd5e1',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 2,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 3,
+    elevation: 1,
   },
   googleButtonContent: {
     flexDirection: 'row',
@@ -238,11 +412,110 @@ const styles = StyleSheet.create({
   },
   googleButtonText: {
     color: '#1e293b',
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '600',
   },
+  dividerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginVertical: 16,
+  },
+  dividerLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: '#E2E8F0',
+  },
+  dividerText: {
+    paddingHorizontal: 10,
+    color: '#94A3B8',
+    fontSize: 12,
+    fontWeight: '500',
+    textTransform: 'uppercase',
+  },
+  tabContainer: {
+    flexDirection: 'row',
+    backgroundColor: '#F1F5F9',
+    borderRadius: 8,
+    padding: 3,
+    marginBottom: 16,
+  },
+  tabBtn: {
+    flex: 1,
+    paddingVertical: 8,
+    alignItems: 'center',
+    borderRadius: 6,
+  },
+  tabBtnActive: {
+    backgroundColor: '#FFFFFF',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.08,
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  tabBtnText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.secondary,
+  },
+  tabBtnTextActive: {
+    color: colors.primaryContainer,
+    fontWeight: '700',
+  },
+  inputGroup: {
+    marginBottom: 12,
+  },
+  inputLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.secondary,
+    marginBottom: 4,
+  },
+  inputWrapper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+    borderRadius: 8,
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 12,
+    height: 46,
+  },
+  textInput: {
+    flex: 1,
+    fontSize: 14,
+    color: colors.onSurface,
+  },
+  forgotPasswordBtn: {
+    alignSelf: 'flex-end',
+    marginBottom: 16,
+    marginTop: -4,
+  },
+  forgotPasswordText: {
+    color: colors.primaryContainer,
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  primaryButton: {
+    backgroundColor: colors.primaryContainer,
+    height: 48,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  primaryButtonText: {
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: '700',
+  },
   footerNote: {
-    marginTop: 32,
+    marginTop: 20,
     alignItems: 'center',
   },
   footerNoteText: {
