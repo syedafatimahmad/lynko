@@ -67,7 +67,7 @@ export default function ChainOfCustodyScreen({ navigation }: any) {
     updateCoCData({ photos: updated });
   };
 
-  const handleSubmit = async () => {
+  const handleSubmit = () => {
     if (!cocData.poNumber || !cocData.description || !cocData.zipCode) {
       Alert.alert('Missing Information', 'Please provide PO number, Description, and Zipcode.');
       return;
@@ -81,25 +81,12 @@ export default function ChainOfCustodyScreen({ navigation }: any) {
       return;
     }
     if (!cocData.inspectorSignature) {
-      Alert.alert('Missing Information', 'Please provide a Courier Signature.');
+      Alert.alert('Missing Information', 'Please provide a Courier Signature before submitting.');
       return;
     }
     
-    // Validation passed
-    const uri = await generatePDF(null, cocData, samples);
-    if (uri) {
-      const isAvailable = await MailComposer.isAvailableAsync();
-      if (isAvailable) {
-        await MailComposer.composeAsync({
-          recipients: ['info@alphaenvironmental.us'],
-          subject: `Chain of Custody - ${cocData.poNumber}`,
-          body: 'Please find the attached Chain of Custody PDF with inspection log and photo appendix.',
-          attachments: [uri],
-        });
-      } else {
-        await Sharing.shareAsync(uri);
-      }
-    }
+    // Validation passed -> Navigate to dedicated Submit CoC email screen
+    navigation.navigate('SubmitCoC');
   };
 
   return (

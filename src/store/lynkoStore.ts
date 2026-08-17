@@ -56,6 +56,7 @@ interface LynkoState {
   samples: SampleItem[];
   equipment: EquipmentItem[];
   cocData: CoCData;
+  recipientHistory: string[];
   addProject: (p: Project) => Promise<void>;
   deleteProject: (id: string) => Promise<void>;
   addSample: (s: SampleItem) => Promise<void>;
@@ -63,6 +64,7 @@ interface LynkoState {
   deleteSample: (id: string) => Promise<void>;
   updateEquipment: (id: string, delta: number) => void;
   updateCoCData: (updates: Partial<CoCData>) => Promise<void>;
+  addRecipientEmail: (email: string) => Promise<void>;
   syncFromFirestore: () => Promise<void>;
   clearStore: () => void;
 }
@@ -82,6 +84,8 @@ const initialCoCData: CoCData = {
   photos: [],
 };
 
+const defaultRecipients = ['info@alphaenvironmental.us', 'lab@alphaenvironmental.us'];
+
 export const useLynkoStore = create<LynkoState>()(
   persist(
     (set, get) => ({
@@ -94,6 +98,7 @@ export const useLynkoStore = create<LynkoState>()(
         { id: '4', name: 'Lead Dust Wipe Template', count: 0 },
       ],
       cocData: initialCoCData,
+      recipientHistory: defaultRecipients,
 
       addProject: async (p) => {
         set((state) => ({ projects: [p, ...state.projects] }));
@@ -146,6 +151,20 @@ export const useLynkoStore = create<LynkoState>()(
         }
       },
 
+      addRecipientEmail: async (email) => {
+        const clean = email.trim().toLowerCase();
+        if (!clean) return;
+        set((state) => {
+          const filtered = state.recipientHistory.filter(e => e.toLowerCase() !== clean);
+          return { recipientHistory: [clean, ...filtered].slice(0, 10) };
+        });
+        if (auth.currentUser) {
+          await setDoc(doc(db, 'users', auth.currentUser.uid, 'settings', 'recipients'), {
+            history: get().recipientHistory
+          }, { merge: true });
+        }
+      },
+
       syncFromFirestore: async () => {
         const user = auth.currentUser;
         if (!user) return;
@@ -162,15 +181,24 @@ export const useLynkoStore = create<LynkoState>()(
           // Fetch CoC
           const cSnap = await getDoc(doc(db, 'users', user.uid, 'cocData', 'current'));
           const fetchedCoC = cSnap.exists() ? cSnap.data() as CoCData : initialCoCData;
+
+          // Fetch Recipient History
+          const rSnap = await getDoc(doc(db, 'users', user.uid, 'settings', 'recipients'));
+          const fetchedRecipients = rSnap.exists() && rSnap.data()?.history ? rSnap.data()?.history : defaultRecipients;
           
-          set({ projects: fetchedProjects, samples: fetchedSamples, cocData: fetchedCoC });
+          set({ 
+            projects: fetchedProjects, 
+            samples: fetchedSamples, 
+            cocData: fetchedCoC,
+            recipientHistory: fetchedRecipients
+          });
         } catch (e) {
           console.error("Error syncing from Firestore:", e);
         }
       },
 
       clearStore: () => {
-        set({ projects: [], samples: [], cocData: initialCoCData });
+        set({ projects: [], samples: [], cocData: initialCoCData, recipientHistory: defaultRecipients });
       }
     }),
     {

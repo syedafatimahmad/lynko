@@ -8,7 +8,7 @@ import SignInScreen from '../screens/SignInScreen';
 import NewProjectScreen from '../screens/NewProjectScreen';
 import ChainOfCustodyScreen from '../screens/ChainOfCustodyScreen';
 import EditSamplesScreen from '../screens/EditSamplesScreen';
-import VerifyEmailScreen from '../screens/VerifyEmailScreen';
+import SubmitCoCScreen from '../screens/SubmitCoCScreen';
 
 const Stack = createNativeStackNavigator();
 
@@ -19,16 +19,13 @@ export default function RootNavigator() {
     <NavigationContainer>
       <Stack.Navigator screenOptions={{ headerShown: false }}>
         {user ? (
-          user.emailVerified ? (
-            <>
-              <Stack.Screen name="AppTabs" component={AppTabs} />
-              <Stack.Screen name="NewProject" component={NewProjectScreen} options={{ presentation: 'modal' }} />
-              <Stack.Screen name="ChainOfCustody" component={ChainOfCustodyScreen} />
-              <Stack.Screen name="EditSamples" component={EditSamplesScreen} />
-            </>
-          ) : (
-            <Stack.Screen name="VerifyEmail" component={VerifyEmailScreen} />
-          )
+          <>
+            <Stack.Screen name="AppTabs" component={AppTabs} />
+            <Stack.Screen name="NewProject" component={NewProjectScreen} options={{ presentation: 'modal' }} />
+            <Stack.Screen name="ChainOfCustody" component={ChainOfCustodyScreen} />
+            <Stack.Screen name="EditSamples" component={EditSamplesScreen} />
+            <Stack.Screen name="SubmitCoC" component={SubmitCoCScreen} />
+          </>
         ) : (
           <Stack.Screen name="SignIn" component={SignInScreen} />
         )}
