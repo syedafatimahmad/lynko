@@ -9,8 +9,7 @@ import {
   Image, 
   Platform,
   ScrollView,
-  KeyboardAvoidingView,
-  Alert
+  KeyboardAvoidingView
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { 
@@ -41,31 +40,42 @@ export default function SignInScreen() {
   const setUserData = useAuthStore((state) => state.setUserData);
   const syncFromFirestore = useLynkoStore((state) => state.syncFromFirestore);
 
+  const validateEmail = (val: string) => {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return emailRegex.test(val);
+  };
+
   const finishLogin = async (firebaseUser: any) => {
     try {
-      const userDocRef = doc(db, 'users', firebaseUser.uid);
-      const docSnap = await getDoc(userDocRef);
-      
-      let userDataObj: any;
-      if (docSnap.exists()) {
-        userDataObj = docSnap.data();
-      } else {
-        userDataObj = {
-          uid: firebaseUser.uid,
-          email: firebaseUser.email,
-          displayName: firebaseUser.displayName || firebaseUser.email?.split('@')[0],
-          photoURL: firebaseUser.photoURL || null,
-          role: 'user',
-          createdAt: serverTimestamp(),
-        };
-        await setDoc(userDocRef, userDataObj);
-      }
+      const defaultUserData = {
+        uid: firebaseUser.uid,
+        email: firebaseUser.email || '',
+        displayName: firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'Field Inspector',
+        photoURL: firebaseUser.photoURL || null,
+        role: 'user',
+      };
 
-      await syncFromFirestore();
+      // 1. Immediately log in user locally so app navigation activates instantly
       setUser(firebaseUser);
-      setUserData(userDataObj);
+      setUserData(defaultUserData);
+
+      // 2. Synchronize Firestore document in background without blocking login
+      try {
+        const userDocRef = doc(db, 'users', firebaseUser.uid);
+        const docSnap = await getDoc(userDocRef);
+        
+        if (docSnap.exists()) {
+          setUserData(docSnap.data());
+        } else {
+          await setDoc(userDocRef, { ...defaultUserData, createdAt: serverTimestamp() }, { merge: true });
+        }
+
+        await syncFromFirestore();
+      } catch (firestoreErr) {
+        console.warn('Background Firestore sync deferred:', firestoreErr);
+      }
     } catch (err: any) {
-      console.error('Error saving user data:', err);
+      console.error('Error during finishLogin:', err);
       setUser(firebaseUser);
     } finally {
       setLoading(false);
@@ -74,11 +84,24 @@ export default function SignInScreen() {
 
   const handleEmailAuth = async () => {
     const cleanEmail = email.trim();
+    
+    // Friendly Validation Checks
     if (!cleanEmail) {
       setError('Please enter your email address.');
       return;
     }
-    if (!password || password.length < 6) {
+
+    if (!validateEmail(cleanEmail)) {
+      setError('Please enter a valid email format (e.g. name@domain.com).');
+      return;
+    }
+
+    if (!password) {
+      setError('Please enter your password.');
+      return;
+    }
+
+    if (password.length < 6) {
       setError('Password must be at least 6 characters.');
       return;
     }
@@ -99,16 +122,24 @@ export default function SignInScreen() {
       }
     } catch (err: any) {
       console.error('Auth error:', err);
-      if (err.code === 'auth/user-not-found' || err.code === 'auth/wrong-password' || err.code === 'auth/invalid-credential') {
-        setError('Invalid email or password. Please check your credentials.');
-      } else if (err.code === 'auth/email-already-in-use') {
-        setError('An account with this email already exists. Please sign in instead.');
-      } else if (err.code === 'auth/weak-password') {
+      const code = err.code || '';
+
+      if (code === 'auth/user-not-found') {
+        setError('No inspector account found with this email. Tap "Create Account" above to register.');
+      } else if (code === 'auth/wrong-password' || code === 'auth/invalid-credential') {
+        setError('Incorrect password or email. If you forgot your password, tap "Forgot Password?" below.');
+      } else if (code === 'auth/email-already-in-use') {
+        setError('An account with this email already exists. Please switch to the "Sign In" tab.');
+      } else if (code === 'auth/invalid-email') {
+        setError('Invalid email address format. Please check for typos.');
+      } else if (code === 'auth/weak-password') {
         setError('Password is too weak. Please use at least 6 characters.');
-      } else if (err.code === 'auth/network-request-failed') {
-        setError('Network error. Please check your internet connection.');
+      } else if (code === 'auth/too-many-requests') {
+        setError('Too many failed attempts. Please wait a few minutes or reset your password.');
+      } else if (code === 'auth/network-request-failed') {
+        setError('Network connection error. Please check your Wi-Fi or mobile data.');
       } else {
-        setError(err.message || 'Authentication failed. Please try again.');
+        setError(err.message || 'Authentication failed. Please check your credentials.');
       }
       setLoading(false);
     }
@@ -117,17 +148,29 @@ export default function SignInScreen() {
   const handleForgotPassword = async () => {
     const cleanEmail = email.trim();
     if (!cleanEmail) {
-      setError('Please enter your email address above to receive a reset link.');
+      setError('Please type your email address in the box above, then tap "Forgot Password?".');
+      return;
+    }
+
+    if (!validateEmail(cleanEmail)) {
+      setError('Please enter a valid email format to receive your reset link.');
       return;
     }
 
     setLoading(true);
     setError('');
+    setInfoMessage('');
+
     try {
       await sendPasswordResetEmail(auth, cleanEmail);
       setInfoMessage(`Password reset link sent to ${cleanEmail}. Please check your inbox.`);
     } catch (err: any) {
-      setError(err.message || 'Could not send reset email.');
+      const code = err.code || '';
+      if (code === 'auth/user-not-found') {
+        setError('No account exists with this email address.');
+      } else {
+        setError(err.message || 'Could not send reset email. Please try again.');
+      }
     } finally {
       setLoading(false);
     }
@@ -153,20 +196,23 @@ export default function SignInScreen() {
           if (popupErr.code === 'auth/popup-blocked') {
             await signInWithRedirect(auth, provider);
           } else {
-            throw popupErr;
+            // Friendly mobile guidance
+            setError('Google sign-in popup is not supported directly in Expo Go. Please use Email & Password above to sign in or create an account.');
+            setLoading(false);
           }
         }
       }
     } catch (err: any) {
       console.error('Google Sign in error:', err);
-      if (err.code === 'auth/popup-closed-by-user') {
-        setError('Sign-in was cancelled.');
-      } else if (err.code === 'auth/account-exists-with-different-credential') {
+      const code = err.code || '';
+      if (code === 'auth/popup-closed-by-user') {
+        setError('Google sign-in was cancelled.');
+      } else if (code === 'auth/account-exists-with-different-credential') {
         setError('An account already exists with this email. Please sign in with your email and password.');
-      } else if (err.code === 'auth/network-request-failed') {
+      } else if (code === 'auth/network-request-failed') {
         setError('Network error. Please check your internet connection.');
       } else {
-        setError(err.message || 'Could not sign in with Google. Please try again.');
+        setError(err.message || 'Could not sign in with Google. Please use email & password.');
       }
       setLoading(false);
     }
@@ -189,43 +235,25 @@ export default function SignInScreen() {
               />
               <Text style={styles.title}>Field Inspector Portal</Text>
               <Text style={styles.subtitle}>
-                {isRegistering ? 'Create your inspector account' : 'Sign in to access Chain of Custody & Projects'}
+                {isRegistering ? 'Create your new inspector account' : 'Sign in to access Chain of Custody & Projects'}
               </Text>
             </View>
 
-            {/* Error & Info Banners */}
+            {/* Error Banner */}
             {error ? (
               <View style={styles.alertBannerError}>
-                <Ionicons name="alert-circle" size={18} color={colors.error} style={{ marginRight: 8 }} />
+                <Ionicons name="alert-circle" size={20} color={colors.error} style={{ marginRight: 8 }} />
                 <Text style={styles.alertTextError}>{error}</Text>
               </View>
             ) : null}
 
+            {/* Info / Success Banner */}
             {infoMessage ? (
               <View style={styles.alertBannerSuccess}>
-                <Ionicons name="checkmark-circle" size={18} color="#047857" style={{ marginRight: 8 }} />
+                <Ionicons name="checkmark-circle" size={20} color="#047857" style={{ marginRight: 8 }} />
                 <Text style={styles.alertTextSuccess}>{infoMessage}</Text>
               </View>
             ) : null}
-
-            {/* 1-Tap Google Sign-In */}
-            <TouchableOpacity 
-              style={styles.googleButton} 
-              onPress={handleGoogleSignIn} 
-              disabled={loading}
-            >
-              <View style={styles.googleButtonContent}>
-                <Ionicons name="logo-google" size={20} color="#4285F4" style={{ marginRight: 10 }} />
-                <Text style={styles.googleButtonText}>Continue with Google</Text>
-              </View>
-            </TouchableOpacity>
-
-            {/* OR Divider */}
-            <View style={styles.dividerRow}>
-              <View style={styles.dividerLine} />
-              <Text style={styles.dividerText}>or email</Text>
-              <View style={styles.dividerLine} />
-            </View>
 
             {/* Mode Switcher Tabs */}
             <View style={styles.tabContainer}>
@@ -243,7 +271,7 @@ export default function SignInScreen() {
               </TouchableOpacity>
             </View>
 
-            {/* Email Input */}
+            {/* Email Address Input */}
             <View style={styles.inputGroup}>
               <Text style={styles.inputLabel}>Email Address</Text>
               <View style={styles.inputWrapper}>
@@ -251,11 +279,12 @@ export default function SignInScreen() {
                 <TextInput
                   style={styles.textInput}
                   value={email}
-                  onChangeText={setEmail}
-                  placeholder="inspector@alphaenvironmental.us"
+                  onChangeText={(val) => { setEmail(val); if (error) setError(''); }}
+                  placeholder="e.g. inspector@alphaenvironmental.us"
                   placeholderTextColor="#94A3B8"
                   autoCapitalize="none"
                   keyboardType="email-address"
+                  autoCorrect={false}
                 />
               </View>
             </View>
@@ -268,8 +297,8 @@ export default function SignInScreen() {
                 <TextInput
                   style={styles.textInput}
                   value={password}
-                  onChangeText={setPassword}
-                  placeholder="••••••••"
+                  onChangeText={(val) => { setPassword(val); if (error) setError(''); }}
+                  placeholder="At least 6 characters"
                   placeholderTextColor="#94A3B8"
                   secureTextEntry={!showPassword}
                 />
@@ -279,14 +308,14 @@ export default function SignInScreen() {
               </View>
             </View>
 
-            {/* Forgot Password Link (Sign In Mode) */}
+            {/* Forgot Password Link (Sign In Mode only) */}
             {!isRegistering ? (
               <TouchableOpacity style={styles.forgotPasswordBtn} onPress={handleForgotPassword}>
                 <Text style={styles.forgotPasswordText}>Forgot Password?</Text>
               </TouchableOpacity>
             ) : null}
 
-            {/* Submit Action Button */}
+            {/* Primary Action Button (Sign In / Register) */}
             <TouchableOpacity 
               style={styles.primaryButton} 
               onPress={handleEmailAuth} 
@@ -296,14 +325,33 @@ export default function SignInScreen() {
                 <ActivityIndicator color="#FFFFFF" />
               ) : (
                 <Text style={styles.primaryButtonText}>
-                  {isRegistering ? 'Create Account' : 'Sign In with Email'}
+                  {isRegistering ? 'Create Inspector Account' : 'Sign In'}
                 </Text>
               )}
             </TouchableOpacity>
 
+            {/* OR Divider */}
+            <View style={styles.dividerRow}>
+              <View style={styles.dividerLine} />
+              <Text style={styles.dividerText}>or</Text>
+              <View style={styles.dividerLine} />
+            </View>
+
+            {/* Google Sign-In Button */}
+            <TouchableOpacity 
+              style={styles.googleButton} 
+              onPress={handleGoogleSignIn} 
+              disabled={loading}
+            >
+              <View style={styles.googleButtonContent}>
+                <Ionicons name="logo-google" size={18} color="#4285F4" style={{ marginRight: 10 }} />
+                <Text style={styles.googleButtonText}>Continue with Google</Text>
+              </View>
+            </TouchableOpacity>
+
             <View style={styles.footerNote}>
               <Text style={styles.footerNoteText}>
-                Lynko • Alpha Environmental Inspection Suite
+                Lynko • Alpha Environmental Field Suite
               </Text>
             </View>
           </View>
@@ -373,6 +421,7 @@ const styles = StyleSheet.create({
     color: colors.error,
     fontSize: 13,
     fontWeight: '500',
+    lineHeight: 18,
   },
   alertBannerSuccess: {
     flexDirection: 'row',
@@ -390,47 +439,7 @@ const styles = StyleSheet.create({
     color: '#047857',
     fontSize: 13,
     fontWeight: '500',
-  },
-  googleButton: {
-    backgroundColor: '#FFFFFF',
-    height: 48,
-    borderRadius: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1.5,
-    borderColor: '#cbd5e1',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.04,
-    shadowRadius: 3,
-    elevation: 1,
-  },
-  googleButtonContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  googleButtonText: {
-    color: '#1e293b',
-    fontSize: 15,
-    fontWeight: '600',
-  },
-  dividerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginVertical: 16,
-  },
-  dividerLine: {
-    flex: 1,
-    height: 1,
-    backgroundColor: '#E2E8F0',
-  },
-  dividerText: {
-    paddingHorizontal: 10,
-    color: '#94A3B8',
-    fontSize: 12,
-    fontWeight: '500',
-    textTransform: 'uppercase',
+    lineHeight: 18,
   },
   tabContainer: {
     flexDirection: 'row',
@@ -441,7 +450,7 @@ const styles = StyleSheet.create({
   },
   tabBtn: {
     flex: 1,
-    paddingVertical: 8,
+    paddingVertical: 9,
     alignItems: 'center',
     borderRadius: 6,
   },
@@ -479,7 +488,7 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     backgroundColor: '#FFFFFF',
     paddingHorizontal: 12,
-    height: 46,
+    height: 48,
   },
   textInput: {
     flex: 1,
@@ -513,6 +522,47 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 15,
     fontWeight: '700',
+  },
+  dividerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginVertical: 16,
+  },
+  dividerLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: '#E2E8F0',
+  },
+  dividerText: {
+    paddingHorizontal: 10,
+    color: '#94A3B8',
+    fontSize: 12,
+    fontWeight: '500',
+    textTransform: 'uppercase',
+  },
+  googleButton: {
+    backgroundColor: '#FFFFFF',
+    height: 46,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1.5,
+    borderColor: '#cbd5e1',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 3,
+    elevation: 1,
+  },
+  googleButtonContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  googleButtonText: {
+    color: '#1e293b',
+    fontSize: 14,
+    fontWeight: '600',
   },
   footerNote: {
     marginTop: 20,
