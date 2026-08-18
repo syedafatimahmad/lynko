@@ -284,27 +284,16 @@ export default function SignInScreen() {
 
                   {/* Shortcut 2: Switch to Register if account not found */}
                   {quickActionType === 'switchToRegister' && (
-                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 8 }}>
-                      <TouchableOpacity 
-                        style={styles.actionChipBtn} 
-                        onPress={() => {
-                          setIsRegistering(true);
-                          setError('');
-                          setQuickActionType(null);
-                        }}
-                      >
-                        <Ionicons name="person-add-outline" size={14} color={colors.primaryContainer} style={{ marginRight: 4 }} />
-                        <Text style={styles.actionChipBtnText}>Create Account</Text>
-                      </TouchableOpacity>
-
-                      <TouchableOpacity 
-                        style={styles.actionChipBtn} 
-                        onPress={handleForgotPassword}
-                      >
-                        <Ionicons name="key-outline" size={14} color={colors.primaryContainer} style={{ marginRight: 4 }} />
-                        <Text style={styles.actionChipBtnText}>Reset Password</Text>
-                      </TouchableOpacity>
-                    </View>
+                    <TouchableOpacity 
+                      style={styles.switchAlertBtn} 
+                      onPress={() => {
+                        setIsRegistering(true);
+                        setError('');
+                        setQuickActionType(null);
+                      }}
+                    >
+                      <Text style={styles.switchAlertBtnText}>👉 Don't have an account? Tap here to Create One</Text>
+                    </TouchableOpacity>
                   )}
                 </View>
               </View>
