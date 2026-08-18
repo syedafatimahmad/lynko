@@ -1,3 +1,4 @@
+import React, { useState } from 'react';
 import { 
   View, 
   Text, 
@@ -9,24 +10,20 @@ import {
   ScrollView, 
   KeyboardAvoidingView, 
   Platform, 
-  Alert,
-  AppState 
+  Alert
 } from 'react-native';
-import React, { useState, useEffect } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { 
   signUpWithEmail, 
   signInWithEmail, 
   resetPassword, 
-  resendVerificationEmail, 
   signInWithGoogle, 
   mapAuthError 
 } from '../services/authService';
 import { useAuthStore } from '../store/authStore';
 import { useLynkoStore } from '../store/lynkoStore';
 import { colors } from '../theme/colors';
-import { auth } from '../config/firebase';
 
 export default function SignInScreen() {
   const [isRegistering, setIsRegistering] = useState(false);
@@ -34,53 +31,13 @@ export default function SignInScreen() {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [checkingVerification, setCheckingVerification] = useState(false);
-  const [resending, setResending] = useState(false);
   const [error, setError] = useState('');
   const [infoMessage, setInfoMessage] = useState('');
-  const [registeredEmail, setRegisteredEmail] = useState<string | null>(null);
   const [quickActionType, setQuickActionType] = useState<'switchToRegister' | 'switchToLogin' | null>(null);
 
   const setUser = useAuthStore((state) => state.setUser);
   const setUserData = useAuthStore((state) => state.setUserData);
   const syncFromFirestore = useLynkoStore((state) => state.syncFromFirestore);
-
-  // Auto-detect email verification when app comes to foreground or every 3 seconds
-  useEffect(() => {
-    if (!registeredEmail) return;
-
-    const checkStatus = async () => {
-      try {
-        if (auth.currentUser) {
-          await auth.currentUser.reload();
-          if (auth.currentUser.emailVerified) {
-            const user = auth.currentUser;
-            setUser(user);
-            setUserData({
-              uid: user.uid,
-              email: user.email || '',
-              displayName: user.displayName || user.email?.split('@')[0] || 'Field Inspector',
-              role: 'user',
-            });
-            await syncFromFirestore();
-          }
-        }
-      } catch (e) {}
-    };
-
-    const interval = setInterval(checkStatus, 3000);
-
-    const subscription = AppState.addEventListener('change', (nextState) => {
-      if (nextState === 'active') {
-        checkStatus();
-      }
-    });
-
-    return () => {
-      clearInterval(interval);
-      subscription.remove();
-    };
-  }, [registeredEmail]);
 
   const validateEmail = (val: string) => {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -117,87 +74,26 @@ export default function SignInScreen() {
 
     try {
       if (isRegistering) {
-        // 1. Sign Up & Send Verification Email
-        await signUpWithEmail(cleanEmail, password);
-        setLoading(false);
-        setRegisteredEmail(cleanEmail);
+        // 1. Create account & send verification email in background
+        const { user, profile } = await signUpWithEmail(cleanEmail, password);
+        setUser(user);
+        setUserData(profile);
+        await syncFromFirestore();
       } else {
-        // 2. Sign In & Check Verification
-        const { user, profile, isVerified } = await signInWithEmail(cleanEmail, password, true);
-        
-        if (!isVerified) {
-          setRegisteredEmail(cleanEmail);
-          setLoading(false);
-          return;
-        }
-
-        // Login verified user
+        // 2. Sign In
+        const { user, profile } = await signInWithEmail(cleanEmail, password);
         setUser(user);
         setUserData(profile);
         await syncFromFirestore();
       }
     } catch (err: any) {
-      console.error('Authentication Error:', err);
+      console.error('Auth Error:', err);
       const parsed = mapAuthError(err);
       setError(parsed.message);
       if (parsed.actionType) {
         setQuickActionType(parsed.actionType);
       }
       setLoading(false);
-    }
-  };
-
-  const handleCheckVerification = async () => {
-    setCheckingVerification(true);
-    try {
-      if (auth.currentUser) {
-        await auth.currentUser.reload();
-        if (auth.currentUser.emailVerified) {
-          const user = auth.currentUser;
-          setUser(user);
-          setUserData({
-            uid: user.uid,
-            email: user.email || '',
-            displayName: user.displayName || user.email?.split('@')[0] || 'Field Inspector',
-            role: 'user',
-          });
-          await syncFromFirestore();
-          return;
-        }
-      } else if (email && password) {
-        const { user, profile, isVerified } = await signInWithEmail(email.trim(), password, true);
-        if (isVerified) {
-          setUser(user);
-          setUserData(profile);
-          await syncFromFirestore();
-          return;
-        }
-      }
-
-      Alert.alert(
-        'Email Not Verified Yet',
-        'We have not detected your verification yet.\n\nPlease open your email client, click the link sent to your inbox, then tap this button again.',
-        [{ text: 'OK' }]
-      );
-    } catch (err: any) {
-      Alert.alert('Notice', 'Please click the link in your email and try again.');
-    } finally {
-      setCheckingVerification(false);
-    }
-  };
-
-  const handleResendLink = async () => {
-    setResending(true);
-    try {
-      await resendVerificationEmail(auth.currentUser || registeredEmail || email.trim(), password);
-      Alert.alert(
-        'Verification Link Resent', 
-        `A fresh verification link has been dispatched to ${registeredEmail || email.trim()}.\nPlease check your inbox (and Spam folder).`
-      );
-    } catch (err: any) {
-      Alert.alert('Notice', err.message || 'Could not dispatch fresh link at this moment.');
-    } finally {
-      setResending(false);
     }
   };
 
@@ -252,78 +148,6 @@ export default function SignInScreen() {
     }
   };
 
-  // =========================================================================
-  // VIEW: Dedicated Verification Screen
-  // =========================================================================
-  if (registeredEmail) {
-    return (
-      <SafeAreaView style={styles.safeArea}>
-        <View style={styles.verificationContainer}>
-          <View style={styles.verificationCard}>
-            <View style={styles.emailIconCircle}>
-              <Ionicons name="mail-open-outline" size={48} color={colors.primaryContainer} />
-            </View>
-
-            <Text style={styles.verificationTitle}>Verify Your Email</Text>
-            
-            <Text style={styles.verificationDesc}>
-              We have dispatched an official activation link to:
-            </Text>
-            
-            <View style={styles.emailBadge}>
-              <Text style={styles.emailBadgeText}>{registeredEmail}</Text>
-            </View>
-
-            <View style={styles.noticeBox}>
-              <Ionicons name="information-circle-outline" size={20} color={colors.primary} style={{ marginRight: 8, marginTop: 2 }} />
-              <Text style={styles.noticeText}>
-                Please open your email (and check <Text style={{ fontWeight: 'bold' }}>Spam/Junk</Text>). Click the link in the email, then tap the button below.
-              </Text>
-            </View>
-
-            <TouchableOpacity 
-              style={styles.primaryButton}
-              onPress={handleCheckVerification}
-              disabled={checkingVerification}
-            >
-              {checkingVerification ? (
-                <ActivityIndicator color="#FFFFFF" />
-              ) : (
-                <Text style={styles.primaryButtonText}>I've Clicked the Verification Link</Text>
-              )}
-            </TouchableOpacity>
-
-            <TouchableOpacity 
-              style={[styles.resendLinkBtn, { marginTop: 16 }]}
-              onPress={handleResendLink}
-              disabled={resending}
-            >
-              {resending ? (
-                <ActivityIndicator size="small" color={colors.primaryContainer} />
-              ) : (
-                <Text style={styles.resendLinkText}>🔄 Didn't receive it? Resend Link</Text>
-              )}
-            </TouchableOpacity>
-
-            <TouchableOpacity 
-              style={styles.resendLinkBtn}
-              onPress={() => {
-                setRegisteredEmail(null);
-                setIsRegistering(false);
-                setError('');
-              }}
-            >
-              <Text style={[styles.resendLinkText, { color: colors.secondary, marginTop: 4 }]}>Back to Sign In</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </SafeAreaView>
-    );
-  }
-
-  // =========================================================================
-  // VIEW: Main Sign In / Create Account Screen
-  // =========================================================================
   return (
     <SafeAreaView style={styles.safeArea}>
       <KeyboardAvoidingView 
@@ -728,85 +552,5 @@ const styles = StyleSheet.create({
   footerNoteText: {
     fontSize: 12,
     color: colors.outline,
-  },
-  // Verification Screen Styles
-  verificationContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    padding: 20,
-  },
-  verificationCard: {
-    backgroundColor: colors.surfaceContainerLowest,
-    padding: 28,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.08,
-    shadowRadius: 16,
-    elevation: 4,
-  },
-  emailIconCircle: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: '#E6F8F7',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 18,
-    borderWidth: 1,
-    borderColor: '#b2ebe5',
-  },
-  verificationTitle: {
-    fontSize: 22,
-    fontWeight: 'bold',
-    color: colors.onSurface,
-    marginBottom: 8,
-  },
-  verificationDesc: {
-    fontSize: 14,
-    color: colors.secondary,
-    textAlign: 'center',
-    marginBottom: 10,
-  },
-  emailBadge: {
-    backgroundColor: '#F1F5F9',
-    paddingHorizontal: 14,
-    paddingVertical: 6,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-    marginBottom: 18,
-  },
-  emailBadgeText: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: colors.primary,
-  },
-  noticeBox: {
-    flexDirection: 'row',
-    backgroundColor: '#E6F8F7',
-    borderRadius: 8,
-    padding: 12,
-    marginBottom: 24,
-    borderWidth: 1,
-    borderColor: '#b2ebe5',
-  },
-  noticeText: {
-    flex: 1,
-    fontSize: 13,
-    color: '#004d40',
-    lineHeight: 18,
-  },
-  resendLinkBtn: {
-    paddingVertical: 6,
-    alignItems: 'center',
-  },
-  resendLinkText: {
-    fontSize: 13,
-    color: colors.primaryContainer,
-    fontWeight: '700',
   },
 });

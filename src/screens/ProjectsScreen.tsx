@@ -1,9 +1,22 @@
-import React, { useState } from 'react';
-import { View, Text, FlatList, TouchableOpacity, StyleSheet, TextInput, Platform } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { 
+  View, 
+  Text, 
+  FlatList, 
+  TouchableOpacity, 
+  StyleSheet, 
+  TextInput, 
+  Platform,
+  AppState,
+  ActivityIndicator,
+  Alert
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useLynkoStore } from '../store/lynkoStore';
 import { colors } from '../theme/colors';
+import { auth } from '../config/firebase';
+import { resendVerificationEmail } from '../services/authService';
 
 export default function ProjectsScreen({ navigation }: any) {
   const projects = useLynkoStore((state) => state.projects);
@@ -13,6 +26,51 @@ export default function ProjectsScreen({ navigation }: any) {
   
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<'All' | 'Draft' | 'Dispatched' | 'Completed'>('All');
+  const [isEmailVerified, setIsEmailVerified] = useState(auth.currentUser?.emailVerified ?? true);
+  const [bannerDismissed, setBannerDismissed] = useState(false);
+  const [resending, setResending] = useState(false);
+
+  // Live verification check on foreground return or background interval
+  useEffect(() => {
+    const checkVerification = async () => {
+      if (auth.currentUser) {
+        try {
+          await auth.currentUser.reload();
+          setIsEmailVerified(auth.currentUser.emailVerified);
+        } catch (e) {}
+      }
+    };
+
+    checkVerification();
+    const interval = setInterval(checkVerification, 5000);
+
+    const subscription = AppState.addEventListener('change', (nextState) => {
+      if (nextState === 'active') {
+        checkVerification();
+      }
+    });
+
+    return () => {
+      clearInterval(interval);
+      subscription.remove();
+    };
+  }, []);
+
+  const handleResend = async () => {
+    if (!auth.currentUser) return;
+    setResending(true);
+    try {
+      await resendVerificationEmail(auth.currentUser);
+      Alert.alert(
+        'Verification Link Sent',
+        `A fresh verification link has been dispatched to ${auth.currentUser.email}.\nPlease check your inbox (and Spam folder).`
+      );
+    } catch (e: any) {
+      Alert.alert('Notice', e?.message || 'Could not send verification email at this moment.');
+    } finally {
+      setResending(false);
+    }
+  };
 
   const filteredProjects = projects.filter(p => {
     const matchesSearch = 
@@ -45,6 +103,33 @@ export default function ProjectsScreen({ navigation }: any) {
           )}
         </TouchableOpacity>
       </View>
+
+      {/* Soft Verification Banner (Non-blocking background notice) */}
+      {!isEmailVerified && !bannerDismissed && auth.currentUser?.email ? (
+        <View style={styles.verificationBanner}>
+          <Ionicons name="mail-outline" size={20} color="#92400E" style={{ marginRight: 8, marginTop: 2 }} />
+          <View style={{ flex: 1 }}>
+            <Text style={styles.verificationBannerTitle}>Verify your email address</Text>
+            <Text style={styles.verificationBannerSubtitle}>
+              Check your inbox for <Text style={{ fontWeight: 'bold' }}>{auth.currentUser.email}</Text> to secure your inspector account.
+            </Text>
+            <TouchableOpacity 
+              style={styles.resendBtnInline}
+              onPress={handleResend}
+              disabled={resending}
+            >
+              {resending ? (
+                <ActivityIndicator size="small" color="#92400E" />
+              ) : (
+                <Text style={styles.resendBtnInlineText}>Resend Verification Link →</Text>
+              )}
+            </TouchableOpacity>
+          </View>
+          <TouchableOpacity onPress={() => setBannerDismissed(true)} style={{ padding: 4 }}>
+            <Ionicons name="close" size={18} color="#92400E" />
+          </TouchableOpacity>
+        </View>
+      ) : null}
 
       <View style={styles.container}>
         {/* Search Bar */}
@@ -165,7 +250,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: 16,
     paddingTop: 36,
-    paddingBottom: 16,
+    paddingBottom: 12,
   },
   title: {
     fontSize: 26,
@@ -203,6 +288,38 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: 'bold',
     color: '#FFFFFF',
+  },
+  verificationBanner: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    backgroundColor: '#FEF3C7',
+    borderWidth: 1,
+    borderColor: '#FCD34D',
+    borderRadius: 10,
+    padding: 12,
+    marginHorizontal: 16,
+    marginBottom: 12,
+  },
+  verificationBannerTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#92400E',
+    marginBottom: 2,
+  },
+  verificationBannerSubtitle: {
+    fontSize: 12,
+    color: '#92400E',
+    lineHeight: 16,
+  },
+  resendBtnInline: {
+    marginTop: 6,
+    alignSelf: 'flex-start',
+  },
+  resendBtnInlineText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#B45309',
+    textDecorationLine: 'underline',
   },
   container: {
     flex: 1,

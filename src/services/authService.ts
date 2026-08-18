@@ -7,8 +7,7 @@ import {
   GoogleAuthProvider,
   signInWithPopup,
   signInWithRedirect,
-  User as FirebaseUser,
-  onAuthStateChanged
+  User as FirebaseUser
 } from 'firebase/auth';
 import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { Platform } from 'react-native';
@@ -38,7 +37,7 @@ export const mapAuthError = (err: any): { message: string; actionType?: 'switchT
     case 'auth/user-not-found':
     case 'auth/invalid-credential':
       return {
-        message: 'Invalid email/password, or no account exists with this email address.',
+        message: 'Invalid email or password. If you do not have an account, tap "Create Account" below.',
         actionType: 'switchToRegister'
       };
     case 'auth/wrong-password':
@@ -64,14 +63,14 @@ export const mapAuthError = (err: any): { message: string; actionType?: 'switchT
 };
 
 /**
- * Creates a new user, sends email verification, and returns the user object
+ * Creates a new user, sends email verification, and returns the user object and profile
  */
-export const signUpWithEmail = async (email: string, pass: string): Promise<FirebaseUser> => {
+export const signUpWithEmail = async (email: string, pass: string): Promise<{ user: FirebaseUser; profile: UserProfile }> => {
   const cleanEmail = email.trim();
   const userCredential = await createUserWithEmailAndPassword(auth, cleanEmail, pass);
   const user = userCredential.user;
 
-  // Send official verification email
+  // Send official verification email in background
   try {
     await sendEmailVerification(user);
   } catch (verifErr) {
@@ -79,42 +78,39 @@ export const signUpWithEmail = async (email: string, pass: string): Promise<Fire
   }
 
   // Create initial user document in Firestore
+  const profile: UserProfile = {
+    uid: user.uid,
+    email: user.email || cleanEmail,
+    displayName: user.displayName || cleanEmail.split('@')[0],
+    photoURL: user.photoURL || null,
+    role: 'user',
+  };
+
   try {
     const userDocRef = doc(db, 'users', user.uid);
-    await setDoc(userDocRef, {
-      uid: user.uid,
-      email: user.email || cleanEmail,
-      displayName: user.displayName || cleanEmail.split('@')[0],
-      photoURL: user.photoURL || null,
-      role: 'user',
-      createdAt: serverTimestamp(),
-    }, { merge: true });
+    await setDoc(userDocRef, { ...profile, createdAt: serverTimestamp() }, { merge: true });
   } catch (dbErr) {
     console.warn('Firestore initial user creation deferred:', dbErr);
   }
 
-  return user;
+  return { user, profile };
 };
 
 /**
- * Signs in user with email & password, checks verification, and syncs profile
+ * Signs in user with email & password and syncs profile
  */
 export const signInWithEmail = async (
   email: string, 
-  pass: string, 
-  requireVerification: boolean = true
-): Promise<{ user: FirebaseUser; profile: UserProfile; isVerified: boolean }> => {
+  pass: string
+): Promise<{ user: FirebaseUser; profile: UserProfile }> => {
   const cleanEmail = email.trim();
   const userCredential = await signInWithEmailAndPassword(auth, cleanEmail, pass);
   const user = userCredential.user;
 
-  // Fetch the latest verification status from Firebase servers
-  await user.reload();
-  const isVerified = user.emailVerified;
-
-  if (requireVerification && !isVerified) {
-    return { user, profile: null as any, isVerified: false };
-  }
+  // Refresh user state
+  try {
+    await user.reload();
+  } catch (e) {}
 
   // Fetch or create user profile
   let profile: UserProfile = {
@@ -137,7 +133,7 @@ export const signInWithEmail = async (
     console.warn('Firestore profile sync deferred:', dbErr);
   }
 
-  return { user, profile, isVerified: true };
+  return { user, profile };
 };
 
 /**
@@ -152,7 +148,7 @@ export const resendVerificationEmail = async (userOrEmail?: FirebaseUser | strin
   } else if (typeof userOrEmail === 'string') {
     await sendPasswordResetEmail(auth, userOrEmail.trim());
   } else {
-    throw new Error('No user session available to send verification email.');
+    throw new Error('No active user to send verification email.');
   }
 };
 
