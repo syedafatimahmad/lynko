@@ -90,6 +90,12 @@ export default function SignInScreen() {
       }
     } catch (err: any) {
       console.error('Auth Error:', err);
+      if (err?.message === 'EMAIL_NOT_VERIFIED') {
+        // Immediately navigate to the Verify Email window
+        setRegisteredEmailSuccess(cleanEmail);
+        setLoading(false);
+        return;
+      }
       const parsed = mapAuthError(err);
       setError(parsed.message);
       if (parsed.actionType) {
