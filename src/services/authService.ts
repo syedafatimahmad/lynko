@@ -28,6 +28,12 @@ export interface UserProfile {
 export const mapAuthError = (err: any): { message: string; actionType?: 'switchToRegister' | 'switchToLogin' } => {
   const code = err?.code || '';
 
+  if (err?.message === 'EMAIL_NOT_VERIFIED') {
+    return {
+      message: 'Your email address is not verified yet. Please check your email inbox (and spam folder) and click the verification link before signing in.'
+    };
+  }
+
   switch (code) {
     case 'auth/email-already-in-use':
       return {
@@ -63,41 +69,49 @@ export const mapAuthError = (err: any): { message: string; actionType?: 'switchT
 };
 
 /**
- * Creates a new user, sends email verification, and returns the user object and profile
+ * Creates a new user in Firebase Auth, creates Firestore profile,
+ * sends verification email link, and IMMEDIATELY signs out to enforce strict verification.
  */
-export const signUpWithEmail = async (email: string, pass: string): Promise<{ user: FirebaseUser; profile: UserProfile }> => {
+export const signUpWithEmail = async (email: string, pass: string): Promise<{ email: string }> => {
   const cleanEmail = email.trim();
+  
+  // 1. Create user in Firebase Auth
   const userCredential = await createUserWithEmailAndPassword(auth, cleanEmail, pass);
   const user = userCredential.user;
 
-  // Send official verification email in background
+  // 2. Dispatch official verification link email
   try {
     await sendEmailVerification(user);
   } catch (verifErr) {
     console.warn('Verification email dispatch notice:', verifErr);
   }
 
-  // Create initial user document in Firestore
-  const profile: UserProfile = {
-    uid: user.uid,
-    email: user.email || cleanEmail,
-    displayName: user.displayName || cleanEmail.split('@')[0],
-    photoURL: user.photoURL || null,
-    role: 'user',
-  };
-
+  // 3. Initialize Firestore profile
   try {
     const userDocRef = doc(db, 'users', user.uid);
-    await setDoc(userDocRef, { ...profile, createdAt: serverTimestamp() }, { merge: true });
+    await setDoc(userDocRef, {
+      uid: user.uid,
+      email: user.email || cleanEmail,
+      displayName: user.displayName || cleanEmail.split('@')[0],
+      photoURL: user.photoURL || null,
+      role: 'user',
+      createdAt: serverTimestamp(),
+    }, { merge: true });
   } catch (dbErr) {
     console.warn('Firestore initial user creation deferred:', dbErr);
   }
 
-  return { user, profile };
+  // 4. STRICT ENFORCEMENT: Sign out immediately so user cannot access dashboard without verifying
+  try {
+    await signOut(auth);
+  } catch (soErr) {}
+
+  return { email: cleanEmail };
 };
 
 /**
- * Signs in user with email & password and syncs profile
+ * Signs in user with email & password, STRICTLY checks emailVerified,
+ * blocks access if unverified, and returns verified profile.
  */
 export const signInWithEmail = async (
   email: string, 
@@ -107,10 +121,14 @@ export const signInWithEmail = async (
   const userCredential = await signInWithEmailAndPassword(auth, cleanEmail, pass);
   const user = userCredential.user;
 
-  // Refresh user state
-  try {
-    await user.reload();
-  } catch (e) {}
+  // STRICT REFRESH: Reload user to get newest verification status from Google
+  await user.reload();
+
+  if (!user.emailVerified) {
+    // STRICT GATE: Block access, log out session, and throw error
+    await signOut(auth);
+    throw new Error('EMAIL_NOT_VERIFIED');
+  }
 
   // Fetch or create user profile
   let profile: UserProfile = {
@@ -139,17 +157,19 @@ export const signInWithEmail = async (
 /**
  * Resends the official verification link email
  */
-export const resendVerificationEmail = async (userOrEmail?: FirebaseUser | string, pass?: string): Promise<void> => {
-  if (auth.currentUser) {
-    await sendEmailVerification(auth.currentUser);
-  } else if (typeof userOrEmail === 'string' && pass) {
-    const cred = await signInWithEmailAndPassword(auth, userOrEmail.trim(), pass);
-    await sendEmailVerification(cred.user);
-  } else if (typeof userOrEmail === 'string') {
-    await sendPasswordResetEmail(auth, userOrEmail.trim());
-  } else {
-    throw new Error('No active user to send verification email.');
+export const resendVerificationEmail = async (email: string, pass?: string): Promise<void> => {
+  const cleanEmail = email.trim();
+  if (pass) {
+    try {
+      const cred = await signInWithEmailAndPassword(auth, cleanEmail, pass);
+      await sendEmailVerification(cred.user);
+      await signOut(auth);
+      return;
+    } catch (e) {}
   }
+  
+  // Fallback: Send password reset / verification link
+  await sendPasswordResetEmail(auth, cleanEmail);
 };
 
 /**
@@ -161,7 +181,7 @@ export const resetPassword = async (email: string): Promise<void> => {
 };
 
 /**
- * Universal Google Sign-In
+ * Universal Google Sign-In (Google accounts are pre-verified by Google)
  */
 export const signInWithGoogle = async (): Promise<{ user: FirebaseUser; profile: UserProfile }> => {
   const provider = new GoogleAuthProvider();

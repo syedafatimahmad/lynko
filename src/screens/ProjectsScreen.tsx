@@ -104,33 +104,6 @@ export default function ProjectsScreen({ navigation }: any) {
         </TouchableOpacity>
       </View>
 
-      {/* Soft Verification Banner (Non-blocking background notice) */}
-      {!isEmailVerified && !bannerDismissed && auth.currentUser?.email ? (
-        <View style={styles.verificationBanner}>
-          <Ionicons name="mail-outline" size={20} color="#92400E" style={{ marginRight: 8, marginTop: 2 }} />
-          <View style={{ flex: 1 }}>
-            <Text style={styles.verificationBannerTitle}>Verify your email address</Text>
-            <Text style={styles.verificationBannerSubtitle}>
-              Check your inbox for <Text style={{ fontWeight: 'bold' }}>{auth.currentUser.email}</Text> to secure your inspector account.
-            </Text>
-            <TouchableOpacity 
-              style={styles.resendBtnInline}
-              onPress={handleResend}
-              disabled={resending}
-            >
-              {resending ? (
-                <ActivityIndicator size="small" color="#92400E" />
-              ) : (
-                <Text style={styles.resendBtnInlineText}>Resend Verification Link →</Text>
-              )}
-            </TouchableOpacity>
-          </View>
-          <TouchableOpacity onPress={() => setBannerDismissed(true)} style={{ padding: 4 }}>
-            <Ionicons name="close" size={18} color="#92400E" />
-          </TouchableOpacity>
-        </View>
-      ) : null}
-
       <View style={styles.container}>
         {/* Search Bar */}
         <View style={styles.searchContainer}>

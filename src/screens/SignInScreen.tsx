@@ -18,6 +18,7 @@ import {
   signUpWithEmail, 
   signInWithEmail, 
   resetPassword, 
+  resendVerificationEmail,
   signInWithGoogle, 
   mapAuthError 
 } from '../services/authService';
@@ -31,8 +32,10 @@ export default function SignInScreen() {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [resending, setResending] = useState(false);
   const [error, setError] = useState('');
   const [infoMessage, setInfoMessage] = useState('');
+  const [registeredEmailSuccess, setRegisteredEmailSuccess] = useState<string | null>(null);
   const [quickActionType, setQuickActionType] = useState<'switchToRegister' | 'switchToLogin' | null>(null);
 
   const setUser = useAuthStore((state) => state.setUser);
@@ -74,13 +77,12 @@ export default function SignInScreen() {
 
     try {
       if (isRegistering) {
-        // 1. Create account & send verification email in background
-        const { user, profile } = await signUpWithEmail(cleanEmail, password);
-        setUser(user);
-        setUserData(profile);
-        await syncFromFirestore();
+        // 1. STRICT REGISTRATION: Create user, send email, and sign out immediately
+        await signUpWithEmail(cleanEmail, password);
+        setLoading(false);
+        setRegisteredEmailSuccess(cleanEmail);
       } else {
-        // 2. Sign In
+        // 2. STRICT SIGN IN: Check credentials & enforce email verification
         const { user, profile } = await signInWithEmail(cleanEmail, password);
         setUser(user);
         setUserData(profile);
@@ -94,6 +96,24 @@ export default function SignInScreen() {
         setQuickActionType(parsed.actionType);
       }
       setLoading(false);
+    }
+  };
+
+  const handleResendVerification = async () => {
+    const targetEmail = registeredEmailSuccess || email.trim();
+    if (!targetEmail) return;
+    
+    setResending(true);
+    try {
+      await resendVerificationEmail(targetEmail, password);
+      Alert.alert(
+        'Verification Link Sent',
+        `A fresh verification link has been dispatched to ${targetEmail}.\nPlease check your inbox (and Spam folder).`
+      );
+    } catch (err: any) {
+      Alert.alert('Notice', 'Could not send verification email at this moment.');
+    } finally {
+      setResending(false);
     }
   };
 
@@ -148,6 +168,77 @@ export default function SignInScreen() {
     }
   };
 
+  // =========================================================================
+  // VIEW: Dedicated Verification Notice Screen (Strict Gate)
+  // =========================================================================
+  if (registeredEmailSuccess) {
+    return (
+      <SafeAreaView style={styles.safeArea}>
+        <View style={styles.verificationContainer}>
+          <View style={styles.verificationCard}>
+            <View style={styles.emailIconCircle}>
+              <Ionicons name="mail-open-outline" size={48} color={colors.primaryContainer} />
+            </View>
+
+            <Text style={styles.verificationTitle}>Verify Your Email</Text>
+            
+            <Text style={styles.verificationDesc}>
+              Your account has been created. We have dispatched an activation link to:
+            </Text>
+            
+            <View style={styles.emailBadge}>
+              <Text style={styles.emailBadgeText}>{registeredEmailSuccess}</Text>
+            </View>
+
+            <View style={styles.noticeBox}>
+              <Ionicons name="information-circle-outline" size={20} color={colors.primary} style={{ marginRight: 8, marginTop: 2 }} />
+              <Text style={styles.noticeText}>
+                Please check your inbox (and <Text style={{ fontWeight: 'bold' }}>Spam/Junk</Text> folder). You must click the activation link in your email before you can sign in.
+              </Text>
+            </View>
+
+            <TouchableOpacity 
+              style={styles.primaryButton}
+              onPress={() => {
+                setRegisteredEmailSuccess(null);
+                setIsRegistering(false);
+                setError('');
+                setInfoMessage('Account created! Once you click the link in your email, enter your password below to sign in.');
+              }}
+            >
+              <Text style={styles.primaryButtonText}>Proceed to Sign In</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity 
+              style={[styles.resendLinkBtn, { marginTop: 16 }]}
+              onPress={handleResendVerification}
+              disabled={resending}
+            >
+              {resending ? (
+                <ActivityIndicator size="small" color={colors.primaryContainer} />
+              ) : (
+                <Text style={styles.resendLinkText}>🔄 Didn't receive it? Resend Link</Text>
+              )}
+            </TouchableOpacity>
+
+            <TouchableOpacity 
+              style={styles.resendLinkBtn}
+              onPress={() => {
+                setRegisteredEmailSuccess(null);
+                setIsRegistering(true);
+              }}
+            >
+              <Text style={[styles.resendLinkText, { color: colors.secondary, marginTop: 4 }]}>Back to Registration</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  // =========================================================================
+  // VIEW: Main Sign In / Create Account Screen
+  // =========================================================================
   return (
     <SafeAreaView style={styles.safeArea}>
       <KeyboardAvoidingView 
@@ -552,5 +643,85 @@ const styles = StyleSheet.create({
   footerNoteText: {
     fontSize: 12,
     color: colors.outline,
+  },
+  // Verification Screen Styles
+  verificationContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    padding: 20,
+  },
+  verificationCard: {
+    backgroundColor: colors.surfaceContainerLowest,
+    padding: 28,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 16,
+    elevation: 4,
+  },
+  emailIconCircle: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: '#E6F8F7',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 18,
+    borderWidth: 1,
+    borderColor: '#b2ebe5',
+  },
+  verificationTitle: {
+    fontSize: 22,
+    fontWeight: 'bold',
+    color: colors.onSurface,
+    marginBottom: 8,
+  },
+  verificationDesc: {
+    fontSize: 14,
+    color: colors.secondary,
+    textAlign: 'center',
+    marginBottom: 10,
+  },
+  emailBadge: {
+    backgroundColor: '#F1F5F9',
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    marginBottom: 18,
+  },
+  emailBadgeText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: colors.primary,
+  },
+  noticeBox: {
+    flexDirection: 'row',
+    backgroundColor: '#E6F8F7',
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 24,
+    borderWidth: 1,
+    borderColor: '#b2ebe5',
+  },
+  noticeText: {
+    flex: 1,
+    fontSize: 13,
+    color: '#004d40',
+    lineHeight: 18,
+  },
+  resendLinkBtn: {
+    paddingVertical: 6,
+    alignItems: 'center',
+  },
+  resendLinkText: {
+    fontSize: 13,
+    color: colors.primaryContainer,
+    fontWeight: '700',
   },
 });
