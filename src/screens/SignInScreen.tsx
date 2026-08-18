@@ -36,6 +36,7 @@ export default function SignInScreen() {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [checkingVerification, setCheckingVerification] = useState(false);
   const [resending, setResending] = useState(false);
   const [error, setError] = useState('');
   const [infoMessage, setInfoMessage] = useState('');
@@ -122,32 +123,26 @@ export default function SignInScreen() {
         // STEP 1: Create user in Firebase Auth
         const userCredential = await createUserWithEmailAndPassword(auth, cleanEmail, password);
         
-        // STEP 2: Dispatch official verification link email and await response
+        // STEP 2: Dispatch official verification link email without signing out (to preserve token validity)
         try {
           await sendEmailVerification(userCredential.user);
         } catch (verifErr: any) {
           console.warn('Email verification send warning:', verifErr);
         }
 
-        // STEP 3: Cleanly sign out session so user verifies before normal access
-        try {
-          await signOut(auth);
-        } catch (soErr) {}
-
         setLoading(false);
 
-        // STEP 4: Switch UI to dedicated Verification Notice screen
+        // STEP 3: Switch UI to dedicated Verification Notice screen
         setRegisteredEmailSuccess(cleanEmail);
       } else {
         // Sign in existing account
         const userCredential = await signInWithEmailAndPassword(auth, cleanEmail, password);
         
-        // STRICT CHECK: Reload user state to get latest emailVerified from Firebase
+        // Check verification status
         await userCredential.user.reload();
         
         if (!userCredential.user.emailVerified) {
-          // Block access if email is not verified yet
-          await signOut(auth);
+          // If not verified, show the verification screen with live check button
           setRegisteredEmailSuccess(cleanEmail);
           setLoading(false);
           return;
@@ -185,18 +180,49 @@ export default function SignInScreen() {
     }
   };
 
+  const handleCheckVerification = async () => {
+    setCheckingVerification(true);
+    try {
+      if (auth.currentUser) {
+        await auth.currentUser.reload();
+        if (auth.currentUser.emailVerified) {
+          await finishLogin(auth.currentUser);
+          return;
+        }
+      } else if (email && password) {
+        const cred = await signInWithEmailAndPassword(auth, email.trim(), password);
+        await cred.user.reload();
+        if (cred.user.emailVerified) {
+          await finishLogin(cred.user);
+          return;
+        }
+      }
+
+      Alert.alert(
+        'Email Not Verified Yet',
+        'We have not detected your verification yet.\n\nPlease open your email, click the link sent to your inbox, then tap this button again.',
+        [{ text: 'OK' }]
+      );
+    } catch (e: any) {
+      Alert.alert('Notice', 'Could not check status. Please ensure you clicked the link in your email, then try again.');
+    } finally {
+      setCheckingVerification(false);
+    }
+  };
+
   const handleResendVerification = async () => {
-    if (!registeredEmailSuccess) return;
     setResending(true);
     try {
-      if (password) {
-        const cred = await signInWithEmailAndPassword(auth, registeredEmailSuccess, password);
+      if (auth.currentUser) {
+        await sendEmailVerification(auth.currentUser);
+        Alert.alert('Verification Link Resent', `A fresh verification link has been sent to ${auth.currentUser.email}.`);
+      } else if (email && password) {
+        const cred = await signInWithEmailAndPassword(auth, email.trim(), password);
         await sendEmailVerification(cred.user);
-        await signOut(auth);
-        Alert.alert('Verification Link Resent', `A fresh verification link has been sent to ${registeredEmailSuccess}.`);
+        Alert.alert('Verification Link Resent', `A fresh verification link has been sent to ${email.trim()}.`);
       } else {
-        await sendPasswordResetEmail(auth, registeredEmailSuccess);
-        Alert.alert('Link Sent', `An account link has been sent to ${registeredEmailSuccess}.`);
+        await sendPasswordResetEmail(auth, registeredEmailSuccess || email.trim());
+        Alert.alert('Link Sent', `An account link has been sent to ${registeredEmailSuccess || email.trim()}.`);
       }
     } catch (e: any) {
       Alert.alert('Notice', e.message || 'Could not resend at this moment.');
@@ -227,7 +253,7 @@ export default function SignInScreen() {
       setInfoMessage(`Password reset link dispatched to ${cleanEmail}. Please check your inbox and spam folder.`);
       Alert.alert(
         'Password Reset Link Sent',
-        `A password reset link has been dispatched to ${cleanEmail}.\n\nPlease check your inbox (and spam/junk folder) to set a new password.`,
+        `A password reset link has been dispatched to ${cleanEmail}.\n\nPlease check your inbox (and spam/junk folder) to set your new password.`,
         [{ text: 'OK' }]
       );
     } catch (err: any) {
@@ -308,22 +334,24 @@ export default function SignInScreen() {
             <View style={styles.noticeBox}>
               <Ionicons name="information-circle-outline" size={20} color={colors.primary} style={{ marginRight: 8, marginTop: 2 }} />
               <Text style={styles.noticeText}>
-                Please check your inbox (and <Text style={{ fontWeight: 'bold' }}>Spam/Junk</Text> folder). Click the link in the email to activate your account.
+                Please check your inbox (and <Text style={{ fontWeight: 'bold' }}>Spam/Junk</Text> folder). Click the link in the email, then tap the button below.
               </Text>
             </View>
 
+            {/* Main Action: I Have Verified Button */}
             <TouchableOpacity 
               style={styles.primaryButton}
-              onPress={() => {
-                setRegisteredEmailSuccess(null);
-                setIsRegistering(false);
-                setError('');
-                setInfoMessage('Account registered! Please sign in with your password.');
-              }}
+              onPress={handleCheckVerification}
+              disabled={checkingVerification}
             >
-              <Text style={styles.primaryButtonText}>Proceed to Sign In</Text>
+              {checkingVerification ? (
+                <ActivityIndicator color="#FFFFFF" />
+              ) : (
+                <Text style={styles.primaryButtonText}>I've Clicked the Verification Link</Text>
+              )}
             </TouchableOpacity>
 
+            {/* Resend Link */}
             <TouchableOpacity 
               style={[styles.resendLinkBtn, { marginTop: 16 }]}
               onPress={handleResendVerification}
@@ -336,14 +364,17 @@ export default function SignInScreen() {
               )}
             </TouchableOpacity>
 
+            {/* Log Out / Back */}
             <TouchableOpacity 
               style={styles.resendLinkBtn}
-              onPress={() => {
+              onPress={async () => {
+                try { await signOut(auth); } catch(e) {}
                 setRegisteredEmailSuccess(null);
-                setIsRegistering(true);
+                setIsRegistering(false);
+                setError('');
               }}
             >
-              <Text style={[styles.resendLinkText, { color: colors.secondary, marginTop: 4 }]}>Back to Registration</Text>
+              <Text style={[styles.resendLinkText, { color: colors.secondary, marginTop: 4 }]}>Back to Sign In</Text>
             </TouchableOpacity>
           </View>
         </View>
