@@ -1,7 +1,5 @@
 import * as Sharing from 'expo-sharing';
-import * as MailComposer from 'expo-mail-composer';
 import * as Print from 'expo-print';
-import * as FileSystem from 'expo-file-system';
 import { Platform } from 'react-native';
 import { CoCData, Project, SampleItem } from '../store/lynkoStore';
 import { lynkoLogoBase64 } from './lynkoLogoBase64';
@@ -18,31 +16,44 @@ const escapeHtml = (unsafe: string) => {
 
 /**
  * Universal helper to convert any image URI (file://, content://, blob, or remote)
- * to a base64 data URI so expo-print / Web can render it 100% reliably.
+ * to a base64 data URI compliant with Expo SDK 57 modern File System API.
  */
 export const convertUriToBase64 = async (uri: string): Promise<string> => {
   if (!uri) return '';
   if (uri.startsWith('data:')) return uri;
 
   try {
-    if (Platform.OS === 'web') {
-      const response = await fetch(uri);
-      const blob = await response.blob();
-      return new Promise((resolve) => {
-        const reader = new FileReader();
-        reader.onloadend = () => resolve(reader.result as string);
-        reader.onerror = () => resolve('');
-        reader.readAsDataURL(blob);
-      });
-    } else {
-      // On mobile native (iOS / Android), read as base64 string
-      const base64 = await FileSystem.readAsStringAsync(uri, {
-        encoding: 'base64',
-      });
-      return `data:image/jpeg;base64,${base64}`;
-    }
+    // 1. Try modern Expo SDK 57 File API
+    try {
+      const FileSystem = require('expo-file-system');
+      if (FileSystem?.File) {
+        const file = new FileSystem.File(uri);
+        const base64 = await file.base64();
+        if (base64) return `data:image/jpeg;base64,${base64}`;
+      }
+    } catch {}
+
+    // 2. Try expo-file-system/legacy
+    try {
+      const LegacyFS = require('expo-file-system/legacy');
+      if (LegacyFS?.readAsStringAsync) {
+        const base64 = await LegacyFS.readAsStringAsync(uri, {
+          encoding: 'base64',
+        });
+        if (base64) return `data:image/jpeg;base64,${base64}`;
+      }
+    } catch {}
+
+    // 3. Universal Web / React Native fetch reader fallback
+    const response = await fetch(uri);
+    const blob = await response.blob();
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve((reader.result as string) || uri);
+      reader.onerror = () => resolve(uri);
+      reader.readAsDataURL(blob);
+    });
   } catch (err) {
-    console.warn('Could not convert image to base64:', err);
     return uri;
   }
 };
@@ -69,7 +80,7 @@ export const generatePDF = async (project: Project | null, cocData: CoCData, sam
         try {
           return await convertUriToBase64(p);
         } catch {
-          return '';
+          return p;
         }
       })
     );
@@ -446,9 +457,6 @@ export const generatePDF = async (project: Project | null, cocData: CoCData, sam
     return uri;
   } catch (error: any) {
     console.error('Error generating PDF:', error);
-    if (Platform.OS === 'web') {
-      alert('Failed to generate PDF: ' + (error.message || error.toString()));
-    }
     return null;
   }
 };

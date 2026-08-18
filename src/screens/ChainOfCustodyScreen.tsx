@@ -49,11 +49,14 @@ export default function ChainOfCustodyScreen({ navigation }: any) {
 
     const result = await ImagePicker.launchCameraAsync({
       allowsEditing: true,
-      quality: 0.6,
+      quality: 0.5,
+      base64: true,
     });
 
-    if (!result.canceled && result.assets[0]?.uri) {
-      updateCoCData({ photos: [...photos, result.assets[0].uri] });
+    if (!result.canceled && result.assets[0]) {
+      const asset = result.assets[0];
+      const dataUri = asset.base64 ? `data:image/jpeg;base64,${asset.base64}` : asset.uri;
+      updateCoCData({ photos: [...photos, dataUri] });
     }
   };
 
@@ -66,11 +69,12 @@ export default function ChainOfCustodyScreen({ navigation }: any) {
 
     const result = await ImagePicker.launchImageLibraryAsync({
       allowsMultipleSelection: true,
-      quality: 0.6,
+      quality: 0.5,
+      base64: true,
     });
 
     if (!result.canceled && result.assets.length > 0) {
-      const newUris = result.assets.map(a => a.uri);
+      const newUris = result.assets.map(a => (a.base64 ? `data:image/jpeg;base64,${a.base64}` : a.uri));
       updateCoCData({ photos: [...photos, ...newUris] });
     }
   };
