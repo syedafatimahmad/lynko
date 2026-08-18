@@ -9,7 +9,8 @@ import {
   Image, 
   Platform,
   ScrollView,
-  KeyboardAvoidingView
+  KeyboardAvoidingView,
+  Alert
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { 
@@ -18,7 +19,8 @@ import {
   signInWithRedirect,
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
-  sendPasswordResetEmail
+  sendPasswordResetEmail,
+  sendEmailVerification
 } from 'firebase/auth';
 import { doc, setDoc, getDoc, serverTimestamp } from 'firebase/firestore';
 import { auth, db } from '../config/firebase';
@@ -55,7 +57,7 @@ export default function SignInScreen() {
         role: 'user',
       };
 
-      // 1. Immediately log in user locally so app navigation activates instantly
+      // 1. Set user state so app navigation activates
       setUser(firebaseUser);
       setUserData(defaultUserData);
 
@@ -85,7 +87,7 @@ export default function SignInScreen() {
   const handleEmailAuth = async () => {
     const cleanEmail = email.trim();
     
-    // Friendly Validation Checks
+    // Validation Checks
     if (!cleanEmail) {
       setError('Please enter your email address.');
       return;
@@ -112,9 +114,29 @@ export default function SignInScreen() {
 
     try {
       if (isRegistering) {
-        // Register new account
+        // 1. Create Account
         const userCredential = await createUserWithEmailAndPassword(auth, cleanEmail, password);
-        await finishLogin(userCredential.user);
+        
+        // 2. Send Email Verification Link
+        try {
+          await sendEmailVerification(userCredential.user);
+        } catch (verifErr) {
+          console.warn('Email verification dispatch notice:', verifErr);
+        }
+
+        setLoading(false);
+
+        // 3. User Notification & Proceed
+        Alert.alert(
+          'Account Created & Verification Sent',
+          `A verification link has been dispatched to ${cleanEmail}.\n\nPlease check your inbox (or spam folder) to verify your address.`,
+          [
+            { 
+              text: 'Continue to App', 
+              onPress: () => finishLogin(userCredential.user) 
+            }
+          ]
+        );
       } else {
         // Sign in existing account
         const userCredential = await signInWithEmailAndPassword(auth, cleanEmail, password);
@@ -163,16 +185,21 @@ export default function SignInScreen() {
 
     try {
       await sendPasswordResetEmail(auth, cleanEmail);
+      setLoading(false);
       setInfoMessage(`Password reset link sent to ${cleanEmail}. Please check your inbox.`);
+      Alert.alert(
+        'Password Reset Link Sent',
+        `A password reset link has been dispatched to ${cleanEmail}.\n\nPlease check your email (and spam folder) to set your new password.`,
+        [{ text: 'OK' }]
+      );
     } catch (err: any) {
+      setLoading(false);
       const code = err.code || '';
       if (code === 'auth/user-not-found') {
-        setError('No account exists with this email address.');
+        setError('No inspector account exists with this email address.');
       } else {
         setError(err.message || 'Could not send reset email. Please try again.');
       }
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -196,7 +223,6 @@ export default function SignInScreen() {
           if (popupErr.code === 'auth/popup-blocked') {
             await signInWithRedirect(auth, provider);
           } else {
-            // Friendly mobile guidance
             setError('Google sign-in popup is not supported directly in Expo Go. Please use Email & Password above to sign in or create an account.');
             setLoading(false);
           }
