@@ -4,17 +4,8 @@ import { getFirestore } from 'firebase/firestore';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
 
-const decodeBase64 = (str: string) => {
-  try {
-    if (typeof atob !== 'undefined') {
-      return atob(str);
-    }
-  } catch {}
-  return 'AIzaSyA7Txnij795e9RXR7_Fdreo764gzWeI6Ow';
-};
-
 const firebaseConfig = {
-  apiKey: process.env.EXPO_PUBLIC_FIREBASE_API_KEY || decodeBase64('QUl6YVN5QTdUeG5pajc5NWU5UlhSN19GZHJlbzc2NGd6V2VJNk93'),
+  apiKey: process.env.EXPO_PUBLIC_FIREBASE_API_KEY || "AIzaSyBslfQ1JT-JB_4ChP_sSMvAA9NdKqwGuqQ",
   authDomain: process.env.EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN || "lynko-e42be.firebaseapp.com",
   projectId: process.env.EXPO_PUBLIC_FIREBASE_PROJECT_ID || "lynko-e42be",
   storageBucket: process.env.EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET || "lynko-e42be.firebasestorage.app",
@@ -30,8 +21,6 @@ if (Platform.OS === 'web') {
   auth = getAuth(app);
 } else {
   try {
-    // Dynamically require React Native persistence to eliminate RN persistence warning
-    // and satisfy TypeScript public web typings
     const authModule = require('firebase/auth');
     const getRNPersistence = authModule.getReactNativePersistence;
     
