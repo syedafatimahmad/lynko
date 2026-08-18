@@ -113,7 +113,7 @@ const initialCoCData: CoCData = {
   sampledBy: '',
   specialInstructions: '',
   photos: [],
-  sampleTypeCounts: { 'Bulk sample': 4 },
+  sampleTypeCounts: {},
   analysis1: 'Asbestos PLM',
   turnaround1: 'Next-day rush',
   analysis2: 'Not set',
@@ -126,16 +126,11 @@ export const useLynkoStore = create<LynkoState>()(
   persist(
     (set, get) => ({
       projects: [],
-      samples: [
-        { id: '1', name: '1', analysis1Enabled: true, analysis2Enabled: false, description: 'Bedroom', property: 'None', measurement: '0', unit: 'N/A', notes: '' },
-        { id: '2', name: '2', analysis1Enabled: true, analysis2Enabled: false, description: '', property: 'None', measurement: '0', unit: 'N/A', notes: '' },
-        { id: '3', name: '3', analysis1Enabled: true, analysis2Enabled: false, description: '', property: 'None', measurement: '0', unit: 'N/A', notes: '' },
-        { id: '4', name: '4', analysis1Enabled: true, analysis2Enabled: false, description: '', property: 'None', measurement: '0', unit: 'N/A', notes: '' },
-      ],
+      samples: [],
       equipment: [
         { id: '1', name: 'Asbestos PCM Cassette', count: 0 },
         { id: '2', name: 'Asbestos TEM cassette', count: 0 },
-        { id: '3', name: 'Bulk sample', count: 4 },
+        { id: '3', name: 'Bulk sample', count: 0 },
         { id: '4', name: 'Endotoxin free cassette', count: 0 },
         { id: '5', name: 'Polycarbonate Air Filter Cassette', count: 0 },
         { id: '6', name: 'PTFE Filter Cassette', count: 0 },
