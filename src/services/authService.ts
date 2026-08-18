@@ -22,17 +22,20 @@ export interface UserProfile {
   createdAt?: any;
 }
 
+export type SignUpResult = 
+  | { success: true; email: string; user: FirebaseUser }
+  | { success: false; errorCode: string; message: string; actionType?: 'switchToRegister' | 'switchToLogin' };
+
+export type SignInResult = 
+  | { success: true; user: FirebaseUser; profile: UserProfile }
+  | { success: false; isUnverified: true; email: string }
+  | { success: false; isUnverified: false; errorCode: string; message: string; actionType?: 'switchToRegister' | 'switchToLogin' };
+
 /**
  * Universal error code translator for human-friendly messages
  */
 export const mapAuthError = (err: any): { message: string; actionType?: 'switchToRegister' | 'switchToLogin' } => {
   const code = err?.code || '';
-
-  if (err?.message === 'EMAIL_NOT_VERIFIED') {
-    return {
-      message: 'Your email address is not verified yet. Please check your email inbox and click the verification link before signing in.'
-    };
-  }
 
   switch (code) {
     case 'auth/email-already-in-use':
@@ -72,79 +75,101 @@ export const mapAuthError = (err: any): { message: string; actionType?: 'switchT
  * Creates a new user in Firebase Auth, sends verification email link,
  * and maintains the session token so the verification link remains valid.
  */
-export const signUpWithEmail = async (email: string, pass: string): Promise<{ email: string; user: FirebaseUser }> => {
+export const signUpWithEmail = async (email: string, pass: string): Promise<SignUpResult> => {
   const cleanEmail = email.trim();
   
-  // 1. Create user in Firebase Auth
-  const userCredential = await createUserWithEmailAndPassword(auth, cleanEmail, pass);
-  const user = userCredential.user;
-
-  // 2. Dispatch official verification link email
   try {
-    await sendEmailVerification(user);
-  } catch (verifErr) {
-    console.warn('Verification email dispatch notice:', verifErr);
+    // 1. Create user in Firebase Auth
+    const userCredential = await createUserWithEmailAndPassword(auth, cleanEmail, pass);
+    const user = userCredential.user;
+
+    // 2. Dispatch official verification link email
+    try {
+      await sendEmailVerification(user);
+    } catch (verifErr) {
+      console.warn('Verification email dispatch notice:', verifErr);
+    }
+
+    // 3. Initialize Firestore profile
+    try {
+      const userDocRef = doc(db, 'users', user.uid);
+      await setDoc(userDocRef, {
+        uid: user.uid,
+        email: user.email || cleanEmail,
+        displayName: user.displayName || cleanEmail.split('@')[0],
+        photoURL: user.photoURL || null,
+        role: 'user',
+        createdAt: serverTimestamp(),
+      }, { merge: true });
+    } catch (dbErr) {
+      console.warn('Firestore initial user creation deferred:', dbErr);
+    }
+
+    return { success: true, email: cleanEmail, user };
+  } catch (err: any) {
+    const parsed = mapAuthError(err);
+    return {
+      success: false,
+      errorCode: err?.code || 'AUTH_ERROR',
+      message: parsed.message,
+      actionType: parsed.actionType
+    };
   }
+};
 
-  // 3. Initialize Firestore profile
+/**
+ * Signs in user with email & password, cleanly handles verification status,
+ * and returns structured result without throwing unhandled console errors.
+ */
+export const signInWithEmail = async (
+  email: string, 
+  pass: string
+): Promise<SignInResult> => {
+  const cleanEmail = email.trim();
+
   try {
-    const userDocRef = doc(db, 'users', user.uid);
-    await setDoc(userDocRef, {
+    const userCredential = await signInWithEmailAndPassword(auth, cleanEmail, pass);
+    const user = userCredential.user;
+
+    // Reload user to get newest verification status from Google servers
+    await user.reload();
+
+    if (!user.emailVerified) {
+      return { success: false, isUnverified: true, email: cleanEmail };
+    }
+
+    // Fetch or create user profile
+    let profile: UserProfile = {
       uid: user.uid,
       email: user.email || cleanEmail,
       displayName: user.displayName || cleanEmail.split('@')[0],
       photoURL: user.photoURL || null,
       role: 'user',
-      createdAt: serverTimestamp(),
-    }, { merge: true });
-  } catch (dbErr) {
-    console.warn('Firestore initial user creation deferred:', dbErr);
-  }
+    };
 
-  return { email: cleanEmail, user };
-};
-
-/**
- * Signs in user with email & password, STRICTLY checks emailVerified,
- * and returns verified profile or throws EMAIL_NOT_VERIFIED.
- */
-export const signInWithEmail = async (
-  email: string, 
-  pass: string
-): Promise<{ user: FirebaseUser; profile: UserProfile }> => {
-  const cleanEmail = email.trim();
-  const userCredential = await signInWithEmailAndPassword(auth, cleanEmail, pass);
-  const user = userCredential.user;
-
-  // STRICT REFRESH: Reload user to get newest verification status from Google
-  await user.reload();
-
-  if (!user.emailVerified) {
-    throw new Error('EMAIL_NOT_VERIFIED');
-  }
-
-  // Fetch or create user profile
-  let profile: UserProfile = {
-    uid: user.uid,
-    email: user.email || cleanEmail,
-    displayName: user.displayName || cleanEmail.split('@')[0],
-    photoURL: user.photoURL || null,
-    role: 'user',
-  };
-
-  try {
-    const userDocRef = doc(db, 'users', user.uid);
-    const docSnap = await getDoc(userDocRef);
-    if (docSnap.exists()) {
-      profile = docSnap.data() as UserProfile;
-    } else {
-      await setDoc(userDocRef, { ...profile, createdAt: serverTimestamp() }, { merge: true });
+    try {
+      const userDocRef = doc(db, 'users', user.uid);
+      const docSnap = await getDoc(userDocRef);
+      if (docSnap.exists()) {
+        profile = docSnap.data() as UserProfile;
+      } else {
+        await setDoc(userDocRef, { ...profile, createdAt: serverTimestamp() }, { merge: true });
+      }
+    } catch (dbErr) {
+      console.warn('Firestore profile sync deferred:', dbErr);
     }
-  } catch (dbErr) {
-    console.warn('Firestore profile sync deferred:', dbErr);
-  }
 
-  return { user, profile };
+    return { success: true, user, profile };
+  } catch (err: any) {
+    const parsed = mapAuthError(err);
+    return {
+      success: false,
+      isUnverified: false,
+      errorCode: err?.code || 'AUTH_ERROR',
+      message: parsed.message,
+      actionType: parsed.actionType
+    };
+  }
 };
 
 /**

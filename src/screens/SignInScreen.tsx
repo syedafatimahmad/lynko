@@ -18,10 +18,10 @@ import {
   signUpWithEmail, 
   signInWithEmail, 
   resetPassword, 
-  resendVerificationEmail,
+  resendVerificationEmail, 
   signInWithGoogle, 
   mapAuthError,
-  logoutUser
+  logoutUser 
 } from '../services/authService';
 import { useAuthStore } from '../store/authStore';
 import { useLynkoStore } from '../store/lynkoStore';
@@ -78,33 +78,37 @@ export default function SignInScreen() {
 
     setLoading(true);
 
-    try {
-      if (isRegistering) {
-        // 1. Create user & dispatch verification email (keeps session active so link token is valid)
-        await signUpWithEmail(cleanEmail, password);
-        setLoading(false);
+    if (isRegistering) {
+      // 1. Clean Registration handling (Structured result, zero red console errors)
+      const res = await signUpWithEmail(cleanEmail, password);
+      setLoading(false);
+
+      if (res.success) {
         setRegisteredEmailSuccess(cleanEmail);
       } else {
-        // 2. Sign In & check if verified
-        const { user, profile } = await signInWithEmail(cleanEmail, password);
-        setUser(user);
-        setUserData(profile);
-        await syncFromFirestore();
+        setError(res.message);
+        if (res.actionType) {
+          setQuickActionType(res.actionType);
+        }
       }
-    } catch (err: any) {
-      console.error('Auth Error:', err);
-      if (err?.message === 'EMAIL_NOT_VERIFIED') {
-        // Navigate directly to the verification window
-        setRegisteredEmailSuccess(cleanEmail);
-        setLoading(false);
-        return;
-      }
-      const parsed = mapAuthError(err);
-      setError(parsed.message);
-      if (parsed.actionType) {
-        setQuickActionType(parsed.actionType);
-      }
+    } else {
+      // 2. Clean Sign In handling (Structured result, zero red console errors)
+      const res = await signInWithEmail(cleanEmail, password);
       setLoading(false);
+
+      if (res.success) {
+        setUser(res.user);
+        setUserData(res.profile);
+        await syncFromFirestore();
+      } else if (res.isUnverified) {
+        // Smoothly transitions directly to the verification window
+        setRegisteredEmailSuccess(res.email);
+      } else {
+        setError(res.message);
+        if (res.actionType) {
+          setQuickActionType(res.actionType);
+        }
+      }
     }
   };
 
