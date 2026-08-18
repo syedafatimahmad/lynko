@@ -37,6 +37,7 @@ export default function SignInScreen() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [infoMessage, setInfoMessage] = useState('');
+  const [showSwitchToLogin, setShowSwitchToLogin] = useState(false);
   
   const setUser = useAuthStore((state) => state.setUser);
   const setUserData = useAuthStore((state) => state.setUserData);
@@ -86,6 +87,7 @@ export default function SignInScreen() {
 
   const handleEmailAuth = async () => {
     const cleanEmail = email.trim();
+    setShowSwitchToLogin(false);
     
     // Validation Checks
     if (!cleanEmail) {
@@ -146,12 +148,32 @@ export default function SignInScreen() {
       console.error('Auth error:', err);
       const code = err.code || '';
 
-      if (code === 'auth/user-not-found') {
-        setError('No inspector account found with this email. Tap "Create Account" above to register.');
+      if (code === 'auth/email-already-in-use') {
+        setShowSwitchToLogin(true);
+        setError('This email is already registered. Please sign in with your password.');
+        Alert.alert(
+          'Account Already Exists',
+          `An inspector account for "${cleanEmail}" is already registered.`,
+          [
+            { 
+              text: 'Switch to Sign In', 
+              onPress: () => {
+                setIsRegistering(false);
+                setError('');
+                setShowSwitchToLogin(false);
+              } 
+            },
+            {
+              text: 'Reset Password',
+              onPress: () => handleForgotPassword()
+            },
+            { text: 'Cancel', style: 'cancel' }
+          ]
+        );
+      } else if (code === 'auth/user-not-found') {
+        setError('No account found with this email. Tap "Create Account" to register.');
       } else if (code === 'auth/wrong-password' || code === 'auth/invalid-credential') {
         setError('Incorrect password or email. If you forgot your password, tap "Forgot Password?" below.');
-      } else if (code === 'auth/email-already-in-use') {
-        setError('An account with this email already exists. Please switch to the "Sign In" tab.');
       } else if (code === 'auth/invalid-email') {
         setError('Invalid email address format. Please check for typos.');
       } else if (code === 'auth/weak-password') {
@@ -269,7 +291,21 @@ export default function SignInScreen() {
             {error ? (
               <View style={styles.alertBannerError}>
                 <Ionicons name="alert-circle" size={20} color={colors.error} style={{ marginRight: 8 }} />
-                <Text style={styles.alertTextError}>{error}</Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.alertTextError}>{error}</Text>
+                  {showSwitchToLogin && (
+                    <TouchableOpacity 
+                      style={styles.switchAlertBtn} 
+                      onPress={() => {
+                        setIsRegistering(false);
+                        setError('');
+                        setShowSwitchToLogin(false);
+                      }}
+                    >
+                      <Text style={styles.switchAlertBtnText}>👉 Tap here to Sign In now</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
               </View>
             ) : null}
 
@@ -285,13 +321,23 @@ export default function SignInScreen() {
             <View style={styles.tabContainer}>
               <TouchableOpacity 
                 style={[styles.tabBtn, !isRegistering && styles.tabBtnActive]} 
-                onPress={() => { setIsRegistering(false); setError(''); setInfoMessage(''); }}
+                onPress={() => { 
+                  setIsRegistering(false); 
+                  setError(''); 
+                  setInfoMessage(''); 
+                  setShowSwitchToLogin(false);
+                }}
               >
                 <Text style={[styles.tabBtnText, !isRegistering && styles.tabBtnTextActive]}>Sign In</Text>
               </TouchableOpacity>
               <TouchableOpacity 
                 style={[styles.tabBtn, isRegistering && styles.tabBtnActive]} 
-                onPress={() => { setIsRegistering(true); setError(''); setInfoMessage(''); }}
+                onPress={() => { 
+                  setIsRegistering(true); 
+                  setError(''); 
+                  setInfoMessage(''); 
+                  setShowSwitchToLogin(false);
+                }}
               >
                 <Text style={[styles.tabBtnText, isRegistering && styles.tabBtnTextActive]}>Create Account</Text>
               </TouchableOpacity>
@@ -305,7 +351,11 @@ export default function SignInScreen() {
                 <TextInput
                   style={styles.textInput}
                   value={email}
-                  onChangeText={(val) => { setEmail(val); if (error) setError(''); }}
+                  onChangeText={(val) => { 
+                    setEmail(val); 
+                    if (error) setError(''); 
+                    if (showSwitchToLogin) setShowSwitchToLogin(false);
+                  }}
                   placeholder="e.g. inspector@alphaenvironmental.us"
                   placeholderTextColor="#94A3B8"
                   autoCapitalize="none"
@@ -433,7 +483,7 @@ const styles = StyleSheet.create({
   },
   alertBannerError: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     backgroundColor: '#fef2f2',
     borderWidth: 1,
     borderColor: '#fca5a5',
@@ -443,11 +493,20 @@ const styles = StyleSheet.create({
     marginBottom: 14,
   },
   alertTextError: {
-    flex: 1,
     color: colors.error,
     fontSize: 13,
     fontWeight: '500',
     lineHeight: 18,
+  },
+  switchAlertBtn: {
+    marginTop: 6,
+    paddingVertical: 4,
+  },
+  switchAlertBtnText: {
+    color: colors.primaryContainer,
+    fontSize: 13,
+    fontWeight: '700',
+    textDecorationLine: 'underline',
   },
   alertBannerSuccess: {
     flexDirection: 'row',
