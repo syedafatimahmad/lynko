@@ -4,17 +4,8 @@ import { getFirestore } from 'firebase/firestore';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
 
-const decodeBase64 = (str: string) => {
-  try {
-    if (typeof atob !== 'undefined') {
-      return atob(str);
-    }
-  } catch {}
-  return 'AIzaSyBslfQ1JT-JB_4ChP_sSMvAA9NdKqwGuqQ';
-};
-
 const firebaseConfig = {
-  apiKey: process.env.EXPO_PUBLIC_FIREBASE_API_KEY || decodeBase64('QUl6YVN5QnNsZlExSlQtSkJfNENoUF9zU012QUE5TmRLcXdHdXFR'),
+  apiKey: process.env.EXPO_PUBLIC_FIREBASE_API_KEY || "AIzaSyBslfQ1JT-JB_4ChP_sSMvAA9NdKqwGuqQ",
   authDomain: process.env.EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN || "lynko-e42be.firebaseapp.com",
   projectId: process.env.EXPO_PUBLIC_FIREBASE_PROJECT_ID || "lynko-e42be",
   storageBucket: process.env.EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET || "lynko-e42be.firebasestorage.app",
