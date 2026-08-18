@@ -15,8 +15,6 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useLynkoStore } from '../store/lynkoStore';
 import { colors } from '../theme/colors';
-import { auth } from '../config/firebase';
-import { resendVerificationEmail } from '../services/authService';
 
 export default function ProjectsScreen({ navigation }: any) {
   const projects = useLynkoStore((state) => state.projects);
@@ -26,51 +24,6 @@ export default function ProjectsScreen({ navigation }: any) {
   
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<'All' | 'Draft' | 'Dispatched' | 'Completed'>('All');
-  const [isEmailVerified, setIsEmailVerified] = useState(auth.currentUser?.emailVerified ?? true);
-  const [bannerDismissed, setBannerDismissed] = useState(false);
-  const [resending, setResending] = useState(false);
-
-  // Live verification check on foreground return or background interval
-  useEffect(() => {
-    const checkVerification = async () => {
-      if (auth.currentUser) {
-        try {
-          await auth.currentUser.reload();
-          setIsEmailVerified(auth.currentUser.emailVerified);
-        } catch (e) {}
-      }
-    };
-
-    checkVerification();
-    const interval = setInterval(checkVerification, 5000);
-
-    const subscription = AppState.addEventListener('change', (nextState) => {
-      if (nextState === 'active') {
-        checkVerification();
-      }
-    });
-
-    return () => {
-      clearInterval(interval);
-      subscription.remove();
-    };
-  }, []);
-
-  const handleResend = async () => {
-    if (!auth.currentUser) return;
-    setResending(true);
-    try {
-      await resendVerificationEmail(auth.currentUser);
-      Alert.alert(
-        'Verification Link Sent',
-        `A fresh verification link has been dispatched to ${auth.currentUser.email}.\nPlease check your inbox (and Spam folder).`
-      );
-    } catch (e: any) {
-      Alert.alert('Notice', e?.message || 'Could not send verification email at this moment.');
-    } finally {
-      setResending(false);
-    }
-  };
 
   const filteredProjects = projects.filter(p => {
     const matchesSearch = 
