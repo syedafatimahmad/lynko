@@ -10,6 +10,7 @@ import ChainOfCustodyScreen from '../screens/ChainOfCustodyScreen';
 import SampleTypesScreen from '../screens/SampleTypesScreen';
 import EditSamplesScreen from '../screens/EditSamplesScreen';
 import SubmitCoCScreen from '../screens/SubmitCoCScreen';
+import SubmittedCoCScreen from '../screens/SubmittedCoCScreen';
 
 const Stack = createNativeStackNavigator();
 
@@ -27,6 +28,7 @@ export default function RootNavigator() {
             <Stack.Screen name="SampleTypes" component={SampleTypesScreen} />
             <Stack.Screen name="EditSamples" component={EditSamplesScreen} />
             <Stack.Screen name="SubmitCoC" component={SubmitCoCScreen} />
+            <Stack.Screen name="SubmittedCoC" component={SubmittedCoCScreen} />
           </>
         ) : (
           <Stack.Screen name="SignIn" component={SignInScreen} />

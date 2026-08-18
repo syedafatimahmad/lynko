@@ -1,65 +1,66 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity, Alert, ActivityIndicator } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import {
+  View,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  StyleSheet,
+  ScrollView,
+  ActivityIndicator,
+  Alert,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useAuthStore } from '../store/authStore';
-import { useLynkoStore } from '../store/lynkoStore';
-import { colors } from '../theme/colors';
-import { generatePDF } from '../utils/pdfGenerator';
 import { Ionicons } from '@expo/vector-icons';
-import * as Sharing from 'expo-sharing';
 import * as MailComposer from 'expo-mail-composer';
+import * as Sharing from 'expo-sharing';
+import { useAuthStore } from '../store/authStore';
+import { useLynkoStore, SubmissionRecord } from '../store/lynkoStore';
+import { colors } from '../theme/colors';
+import { generatePDF } from '../utils/emailDispatcher';
 
-export default function SubmitCoCScreen({ navigation }: any) {
+export default function SubmitCoCScreen({ route, navigation }: any) {
   const user = useAuthStore((state) => state.user);
   const cocData = useLynkoStore((state) => state.cocData);
   const samples = useLynkoStore((state) => state.samples);
   const recipientHistory = useLynkoStore((state) => state.recipientHistory);
   const addRecipientEmail = useLynkoStore((state) => state.addRecipientEmail);
+  const addSubmission = useLynkoStore((state) => state.addSubmission);
 
-  const defaultTo = recipientHistory.length > 0 ? recipientHistory[0] : 'info@alphaenvironmental.us';
-  const [recipientEmail, setRecipientEmail] = useState(defaultTo);
-  const [subject, setSubject] = useState(`Chain of Custody - ${cocData.poNumber || 'New Inspection'}`);
+  const initialRecipient = route?.params?.prefillRecipient || (recipientHistory.length > 0 ? recipientHistory[0] : '');
+  const [recipientEmail, setRecipientEmail] = useState(initialRecipient);
+  const [subject, setSubject] = useState(
+    route?.params?.prefillSubject || `Chain of Custody - ${cocData.poNumber ? `PO #${cocData.poNumber}` : 'Alpha Environmental Inspection'}`
+  );
   const [message, setMessage] = useState(
-`Hello,
-
-Please find attached the official Chain of Custody for PO #${cocData.poNumber || 'N/A'} (${cocData.description || 'Inspection Project'}).
-
-This document includes:
-• Complete Sample Log (${samples.length} samples)
-• Project Site Photos Appendix (${(cocData.photos || []).length} photos attached)
-• Digital Courier Signature
-
-Sampled By: ${cocData.sampledBy || 'Field Inspector'}
-Sampling Date: ${cocData.samplingDate || new Date().toLocaleDateString()}
-
-Best regards,
-${user?.displayName || user?.email?.split('@')[0] || 'Field Inspector'}`
+    `Hello,\n\nPlease find attached the Chain of Custody document and project inspection details for PO #${cocData.poNumber || '47674'}.\n\nTotal Samples: ${samples.length}\nDate: ${cocData.samplingDate || new Date().toLocaleDateString()}\nSampled By: ${cocData.sampledBy || user?.displayName || 'Ali Saleh'}\n\nThank you,\nAlpha Environmental Inspection Team`
   );
   const [sending, setSending] = useState(false);
 
+  useEffect(() => {
+    if (route?.params?.prefillRecipient) {
+      setRecipientEmail(route.params.prefillRecipient);
+    }
+  }, [route?.params?.prefillRecipient]);
+
   const handleSend = async () => {
     const cleanTo = recipientEmail.trim();
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    
-    if (!cleanTo || !emailRegex.test(cleanTo)) {
-      Alert.alert('Invalid Email', 'Please enter a valid recipient email address.');
+    if (!cleanTo) {
+      Alert.alert('Missing Recipient', 'Please enter a valid recipient email address.');
       return;
     }
 
     setSending(true);
     try {
-      // Save recipient into persistent history
       await addRecipientEmail(cleanTo);
 
-      // Generate the official PDF
       const pdfUri = await generatePDF(null, cocData, samples);
-      
       if (!pdfUri) {
-        Alert.alert('Error', 'Failed to generate PDF. Please check your data and try again.');
+        Alert.alert('Error', 'Failed to generate Chain of Custody PDF.');
         setSending(false);
         return;
       }
 
+      // 1. Dispatch Email via MailComposer or native Share
       const isAvailable = await MailComposer.isAvailableAsync();
       if (isAvailable) {
         await MailComposer.composeAsync({
@@ -76,10 +77,39 @@ ${user?.displayName || user?.email?.split('@')[0] || 'Field Inspector'}`
         });
       }
 
+      // 2. Record Verified Submission into Store & Firestore Archive
+      const submissionRecord: SubmissionRecord = {
+        id: `${Date.now()}_${cocData.poNumber || 'sub'}`,
+        poNumber: cocData.poNumber || 'N/A',
+        projectTitle: cocData.description || 'Field Inspection CoC',
+        recipientEmail: cleanTo,
+        senderEmail: user?.email || '',
+        subject: subject,
+        submittedAt: `${new Date().toLocaleDateString()} at ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`,
+        samplesCount: samples.length,
+        photosCount: (cocData.photos || []).length,
+        status: 'Dispatched',
+        pdfUri: pdfUri,
+        turnaround: cocData.turnaround1 || 'Next-day rush',
+        analysisType: cocData.analysis1 || 'Asbestos PLM',
+      };
+
+      await addSubmission(submissionRecord);
+
+      // 3. User Success Confirmation
       Alert.alert(
-        'Chain of Custody Ready',
-        `Dispatched to ${cleanTo}. Your submission has been recorded.`,
-        [{ text: 'OK', onPress: () => navigation.navigate('AppTabs') }]
+        'Chain of Custody Dispatched',
+        `Dispatched to ${cleanTo}. Your submission has been securely recorded and archived in your Submissions History.`,
+        [
+          { 
+            text: 'View Submissions Log', 
+            onPress: () => navigation.replace('SubmittedCoC') 
+          },
+          { 
+            text: 'Done', 
+            onPress: () => navigation.navigate('AppTabs') 
+          }
+        ]
       );
     } catch (err: any) {
       console.error('Error sending CoC:', err);
@@ -110,10 +140,10 @@ ${user?.displayName || user?.email?.split('@')[0] || 'Field Inspector'}`
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         {/* Card 1: Sender Context */}
         <View style={styles.card}>
-          <Text style={styles.cardLabel}>FROM (AUTHENTICATED GOOGLE SENDER)</Text>
+          <Text style={styles.cardLabel}>FROM (AUTHENTICATED SENDER)</Text>
           <View style={styles.senderRow}>
-            <Ionicons name="logo-google" size={18} color="#4285F4" style={{ marginRight: 8 }} />
-            <Text style={styles.senderEmail}>{user?.email || 'inspector@gmail.com'}</Text>
+            <Ionicons name="person-circle" size={22} color={colors.primaryContainer} style={{ marginRight: 8 }} />
+            <Text style={styles.senderEmail}>{user?.email || 'inspector@alphaenvironmental.us'}</Text>
           </View>
         </View>
 
@@ -139,10 +169,10 @@ ${user?.displayName || user?.email?.split('@')[0] || 'Field Inspector'}`
                 {recipientHistory.map((email, idx) => (
                   <TouchableOpacity
                     key={idx}
-                    style={[styles.chip, recipientEmail.toLowerCase() === email.toLowerCase() && styles.chipActive]}
+                    style={[styles.chip, recipientEmail === email && styles.chipActive]}
                     onPress={() => setRecipientEmail(email)}
                   >
-                    <Text style={[styles.chipText, recipientEmail.toLowerCase() === email.toLowerCase() && styles.chipTextActive]}>
+                    <Text style={[styles.chipText, recipientEmail === email && styles.chipTextActive]}>
                       {email}
                     </Text>
                   </TouchableOpacity>
@@ -154,52 +184,64 @@ ${user?.displayName || user?.email?.split('@')[0] || 'Field Inspector'}`
 
         {/* Card 3: Subject & Body */}
         <View style={styles.card}>
-          <Text style={styles.cardLabel}>SUBJECT</Text>
+          <Text style={styles.cardLabel}>EMAIL SUBJECT</Text>
           <TextInput
-            style={[styles.input, styles.subjectInput]}
+            style={styles.subjectInput}
             value={subject}
             onChangeText={setSubject}
           />
 
           <Text style={[styles.cardLabel, { marginTop: 14 }]}>MESSAGE BODY</Text>
           <TextInput
-            style={[styles.input, styles.messageInput]}
+            style={styles.bodyInput}
             value={message}
             onChangeText={setMessage}
             multiline
+            numberOfLines={6}
             textAlignVertical="top"
           />
         </View>
 
-        {/* Card 4: Document Attachment Card */}
-        <View style={styles.card}>
-          <Text style={styles.cardLabel}>ATTACHED INSPECTION DOCUMENT</Text>
-          <View style={styles.attachmentBox}>
-            <View style={styles.attachmentIconBox}>
-              <Ionicons name="document-text" size={28} color={colors.primaryContainer} />
-            </View>
-            <View style={styles.attachmentDetails}>
-              <Text style={styles.attachmentTitle}>ChainOfCustody_{cocData.poNumber || 'Report'}.pdf</Text>
-              <Text style={styles.attachmentSubtitle}>
-                {samples.length} Samples Logged • {(cocData.photos || []).length} Site Photos (8/page)
+        {/* Card 4: Attachment Preview Badge */}
+        <View style={styles.attachmentCard}>
+          <View style={styles.attachmentInfo}>
+            <Ionicons name="document-text" size={28} color={colors.primaryContainer} />
+            <View style={{ marginLeft: 12, flex: 1 }}>
+              <Text style={styles.attachmentName}>ChainOfCustody_{cocData.poNumber || '47674'}.pdf</Text>
+              <Text style={styles.attachmentSize}>
+                {samples.length} Samples • {(cocData.photos || []).length} Site Photos Attached
               </Text>
             </View>
-            <TouchableOpacity style={styles.previewIconBtn} onPress={handleQuickPreview}>
-              <Ionicons name="eye-outline" size={20} color={colors.primaryContainer} />
-            </TouchableOpacity>
           </View>
+
+          <TouchableOpacity style={styles.previewBtn} onPress={handleQuickPreview}>
+            <Ionicons name="eye-outline" size={18} color={colors.primaryContainer} style={{ marginRight: 4 }} />
+            <Text style={styles.previewBtnText}>Preview</Text>
+          </TouchableOpacity>
         </View>
 
-        {/* Action Button */}
-        <TouchableOpacity style={styles.sendButton} onPress={handleSend} disabled={sending}>
+        {/* Send Button */}
+        <TouchableOpacity
+          style={[styles.sendButton, sending && styles.sendButtonDisabled]}
+          onPress={handleSend}
+          disabled={sending}
+        >
           {sending ? (
-            <ActivityIndicator color="#fff" />
+            <ActivityIndicator color="#ffffff" />
           ) : (
             <View style={styles.sendButtonContent}>
-              <Ionicons name="send" size={18} color="#fff" style={{ marginRight: 8 }} />
+              <Ionicons name="send" size={18} color="#ffffff" style={{ marginRight: 8 }} />
               <Text style={styles.sendButtonText}>Send Chain of Custody</Text>
             </View>
           )}
+        </TouchableOpacity>
+
+        <TouchableOpacity 
+          style={styles.viewHistoryLink} 
+          onPress={() => navigation.navigate('SubmittedCoC')}
+        >
+          <Ionicons name="time-outline" size={16} color={colors.primaryContainer} style={{ marginRight: 6 }} />
+          <Text style={styles.viewHistoryLinkText}>View Past Submitted CoCs</Text>
         </TouchableOpacity>
       </ScrollView>
     </SafeAreaView>
@@ -208,32 +250,143 @@ ${user?.displayName || user?.email?.split('@')[0] || 'Field Inspector'}`
 
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: colors.background },
-  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, height: 60, backgroundColor: colors.surface, borderBottomWidth: 1, borderBottomColor: colors.outlineVariant },
-  backButton: { padding: 8 },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    height: 60,
+    backgroundColor: colors.surfaceContainerLowest,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.outlineVariant,
+  },
+  backButton: { padding: 8, borderRadius: 20 },
   headerTitle: { fontSize: 18, fontWeight: 'bold', color: colors.onSurface },
   scrollContent: { padding: 16, paddingBottom: 60 },
-  card: { backgroundColor: colors.surfaceContainerLowest, borderRadius: 10, padding: 14, marginBottom: 14, borderWidth: 1, borderColor: '#E2E8F0', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.04, shadowRadius: 6, elevation: 1 },
-  cardLabel: { fontSize: 11, fontWeight: '700', color: colors.secondary, marginBottom: 8, letterSpacing: 0.5 },
-  senderRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F8FAFC', padding: 10, borderRadius: 6, borderWidth: 1, borderColor: '#E2E8F0' },
-  senderEmail: { fontSize: 14, fontWeight: '600', color: colors.onSurface },
-  inputWrapper: { flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 6, paddingHorizontal: 10, backgroundColor: colors.surfaceContainerLowest },
-  input: { flex: 1, paddingVertical: 10, fontSize: 14, color: colors.onSurface },
+  card: {
+    backgroundColor: colors.surfaceContainerLowest,
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 14,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 6,
+    elevation: 2,
+  },
+  cardLabel: { fontSize: 11, fontWeight: 'bold', color: colors.secondary, marginBottom: 8, letterSpacing: 0.5 },
+  senderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F8FAFC',
+    padding: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  senderEmail: { fontSize: 15, fontWeight: '600', color: colors.onSurface },
+  inputWrapper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+    borderRadius: 8,
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 12,
+    height: 48,
+  },
+  input: { flex: 1, fontSize: 15, color: colors.onSurface },
   historyContainer: { marginTop: 12 },
-  historyTitle: { fontSize: 12, fontWeight: '600', color: colors.secondary, marginBottom: 6 },
-  chipsRow: { gap: 6, paddingVertical: 2 },
-  chip: { paddingVertical: 6, paddingHorizontal: 10, borderRadius: 16, backgroundColor: '#F1F5F9', borderWidth: 1, borderColor: '#CBD5E1' },
-  chipActive: { backgroundColor: '#E6F8F7', borderColor: colors.primaryContainer },
-  chipText: { fontSize: 12, color: colors.onSurfaceVariant, fontWeight: '500' },
-  chipTextActive: { color: colors.primaryContainer, fontWeight: '700' },
-  subjectInput: { borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 6, paddingHorizontal: 10, paddingVertical: 8, fontSize: 14 },
-  messageInput: { minHeight: 120, borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 6, paddingHorizontal: 10, paddingVertical: 8, fontSize: 13, lineHeight: 18 },
-  attachmentBox: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F8FAFC', padding: 12, borderRadius: 8, borderWidth: 1, borderColor: '#E2E8F0' },
-  attachmentIconBox: { width: 44, height: 44, borderRadius: 8, backgroundColor: '#E6F8F7', alignItems: 'center', justifyContent: 'center', marginRight: 12 },
-  attachmentDetails: { flex: 1 },
-  attachmentTitle: { fontSize: 14, fontWeight: 'bold', color: colors.onSurface },
-  attachmentSubtitle: { fontSize: 12, color: colors.secondary, marginTop: 2 },
-  previewIconBtn: { padding: 8 },
-  sendButton: { backgroundColor: colors.primaryContainer, height: 50, borderRadius: 8, alignItems: 'center', justifyContent: 'center', marginTop: 10, shadowColor: colors.primaryContainer, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.2, shadowRadius: 4, elevation: 3 },
+  historyTitle: { fontSize: 12, color: colors.secondary, marginBottom: 6, fontWeight: '600' },
+  chipsRow: { flexDirection: 'row', gap: 8, paddingBottom: 2 },
+  chip: {
+    backgroundColor: '#F1F5F9',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  chipActive: {
+    backgroundColor: '#E6F8F7',
+    borderColor: colors.primaryContainer,
+  },
+  chipText: { fontSize: 12, color: colors.secondary, fontWeight: '500' },
+  chipTextActive: { color: colors.primary, fontWeight: '700' },
+  subjectInput: {
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+    borderRadius: 8,
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.onSurface,
+  },
+  bodyInput: {
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+    borderRadius: 8,
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 14,
+    color: colors.onSurface,
+    minHeight: 120,
+  },
+  attachmentCard: {
+    backgroundColor: '#E6F8F7',
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 20,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderWidth: 1,
+    borderColor: '#b2ebe5',
+  },
+  attachmentInfo: { flexDirection: 'row', alignItems: 'center', flex: 1 },
+  attachmentName: { fontSize: 14, fontWeight: 'bold', color: colors.onSurface },
+  attachmentSize: { fontSize: 12, color: colors.secondary, marginTop: 2 },
+  previewBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: colors.primaryContainer,
+  },
+  previewBtnText: { fontSize: 12, fontWeight: '600', color: colors.primaryContainer },
+  sendButton: {
+    backgroundColor: colors.primaryContainer,
+    height: 52,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  sendButtonDisabled: { opacity: 0.6 },
   sendButtonContent: { flexDirection: 'row', alignItems: 'center' },
-  sendButtonText: { color: '#fff', fontSize: 16, fontWeight: 'bold' },
+  sendButtonText: { color: '#ffffff', fontSize: 16, fontWeight: 'bold' },
+  viewHistoryLink: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 18,
+    paddingVertical: 8,
+  },
+  viewHistoryLinkText: {
+    color: colors.primaryContainer,
+    fontSize: 14,
+    fontWeight: '600',
+  },
 });

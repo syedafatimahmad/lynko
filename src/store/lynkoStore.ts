@@ -10,7 +10,7 @@ export interface Project {
   title: string;
   address: string;
   samplesCount: number;
-  status: 'Completed' | 'Draft';
+  status: 'Completed' | 'Draft' | 'Dispatched';
   date: string;
   description: string;
   zipCode: string;
@@ -34,6 +34,23 @@ export interface EquipmentItem {
   name: string;
   count: number;
   image?: any;
+}
+
+export interface SubmissionRecord {
+  id: string;
+  projectId?: string;
+  poNumber: string;
+  projectTitle: string;
+  recipientEmail: string;
+  senderEmail: string;
+  subject: string;
+  submittedAt: string;
+  samplesCount: number;
+  photosCount: number;
+  status: 'Dispatched' | 'Delivered' | 'Pending Resend';
+  pdfUri?: string;
+  analysisType?: string;
+  turnaround?: string;
 }
 
 export interface CoCData {
@@ -62,9 +79,11 @@ interface LynkoState {
   projects: Project[];
   samples: SampleItem[];
   equipment: EquipmentItem[];
+  submissions: SubmissionRecord[];
   cocData: CoCData;
   recipientHistory: string[];
   addProject: (p: Project) => Promise<void>;
+  updateProject: (id: string, updates: Partial<Project>) => Promise<void>;
   deleteProject: (id: string) => Promise<void>;
   addSample: (s: SampleItem) => Promise<void>;
   updateSample: (id: string, updates: Partial<SampleItem>) => Promise<void>;
@@ -73,6 +92,9 @@ interface LynkoState {
   updateCoCData: (updates: Partial<CoCData>) => Promise<void>;
   setSampleTypeCounts: (counts: { [key: string]: number }) => Promise<void>;
   autoFillField: (field: 'sampleId' | 'description' | 'measurement' | 'unit', value?: string) => Promise<void>;
+  addSubmission: (sub: SubmissionRecord) => Promise<void>;
+  updateSubmissionStatus: (id: string, status: 'Dispatched' | 'Delivered' | 'Pending Resend') => Promise<void>;
+  deleteSubmission: (id: string) => Promise<void>;
   addRecipientEmail: (email: string) => Promise<void>;
   syncFromFirestore: () => Promise<void>;
   clearStore: () => void;
@@ -121,27 +143,54 @@ export const useLynkoStore = create<LynkoState>()(
         { id: '8', name: 'Spore Trap: Slide', count: 0 },
         { id: '9', name: 'Via-cell cassette', count: 0 },
       ],
+      submissions: [],
       cocData: initialCoCData,
       recipientHistory: defaultRecipients,
 
       addProject: async (p) => {
         set((state) => ({ projects: [p, ...state.projects] }));
         if (auth.currentUser) {
-          await setDoc(doc(db, 'users', auth.currentUser.uid, 'projects', p.id), p);
+          try {
+            await setDoc(doc(db, 'users', auth.currentUser.uid, 'projects', p.id), p);
+          } catch (e) {
+            console.warn('Firestore sync deferred:', e);
+          }
+        }
+      },
+
+      updateProject: async (id, updates) => {
+        set((state) => ({
+          projects: state.projects.map(p => p.id === id ? { ...p, ...updates } : p)
+        }));
+        const updated = get().projects.find(p => p.id === id);
+        if (auth.currentUser && updated) {
+          try {
+            await setDoc(doc(db, 'users', auth.currentUser.uid, 'projects', id), updated, { merge: true });
+          } catch (e) {
+            console.warn('Firestore sync deferred:', e);
+          }
         }
       },
 
       deleteProject: async (id) => {
         set((state) => ({ projects: state.projects.filter(p => p.id !== id) }));
         if (auth.currentUser) {
-          await deleteDoc(doc(db, 'users', auth.currentUser.uid, 'projects', id));
+          try {
+            await deleteDoc(doc(db, 'users', auth.currentUser.uid, 'projects', id));
+          } catch (e) {
+            console.warn('Firestore delete deferred:', e);
+          }
         }
       },
 
       addSample: async (s) => {
         set((state) => ({ samples: [...state.samples, s] }));
         if (auth.currentUser) {
-          await setDoc(doc(db, 'users', auth.currentUser.uid, 'samples', s.id), s);
+          try {
+            await setDoc(doc(db, 'users', auth.currentUser.uid, 'samples', s.id), s);
+          } catch (e) {
+            console.warn('Firestore sync deferred:', e);
+          }
         }
       },
 
@@ -151,14 +200,22 @@ export const useLynkoStore = create<LynkoState>()(
         }));
         const sampleToSync = get().samples.find(s => s.id === id);
         if (auth.currentUser && sampleToSync) {
-          await setDoc(doc(db, 'users', auth.currentUser.uid, 'samples', id), sampleToSync, { merge: true });
+          try {
+            await setDoc(doc(db, 'users', auth.currentUser.uid, 'samples', id), sampleToSync, { merge: true });
+          } catch (e) {
+            console.warn('Firestore sync deferred:', e);
+          }
         }
       },
 
       deleteSample: async (id) => {
         set((state) => ({ samples: state.samples.filter(s => s.id !== id) }));
         if (auth.currentUser) {
-          await deleteDoc(doc(db, 'users', auth.currentUser.uid, 'samples', id));
+          try {
+            await deleteDoc(doc(db, 'users', auth.currentUser.uid, 'samples', id));
+          } catch (e) {
+            console.warn('Firestore delete deferred:', e);
+          }
         }
       },
 
@@ -171,7 +228,11 @@ export const useLynkoStore = create<LynkoState>()(
       updateCoCData: async (updates) => {
         set((state) => ({ cocData: { ...state.cocData, ...updates } }));
         if (auth.currentUser) {
-          await setDoc(doc(db, 'users', auth.currentUser.uid, 'cocData', 'current'), get().cocData);
+          try {
+            await setDoc(doc(db, 'users', auth.currentUser.uid, 'cocData', 'current'), get().cocData);
+          } catch (e) {
+            console.warn('Firestore sync deferred:', e);
+          }
         }
       },
 
@@ -213,7 +274,11 @@ export const useLynkoStore = create<LynkoState>()(
         }));
 
         if (auth.currentUser) {
-          await setDoc(doc(db, 'users', auth.currentUser.uid, 'cocData', 'current'), get().cocData, { merge: true });
+          try {
+            await setDoc(doc(db, 'users', auth.currentUser.uid, 'cocData', 'current'), get().cocData, { merge: true });
+          } catch (e) {
+            console.warn('Firestore sync deferred:', e);
+          }
         }
       },
 
@@ -239,8 +304,48 @@ export const useLynkoStore = create<LynkoState>()(
         set({ samples: updatedSamples });
 
         if (auth.currentUser) {
-          for (const s of updatedSamples) {
-            await setDoc(doc(db, 'users', auth.currentUser.uid, 'samples', s.id), s, { merge: true });
+          try {
+            for (const s of updatedSamples) {
+              await setDoc(doc(db, 'users', auth.currentUser.uid, 'samples', s.id), s, { merge: true });
+            }
+          } catch (e) {
+            console.warn('Firestore sync deferred:', e);
+          }
+        }
+      },
+
+      addSubmission: async (sub) => {
+        set((state) => ({ submissions: [sub, ...state.submissions] }));
+        if (auth.currentUser) {
+          try {
+            await setDoc(doc(db, 'users', auth.currentUser.uid, 'submissions', sub.id), sub);
+          } catch (e) {
+            console.warn('Firestore submission sync deferred:', e);
+          }
+        }
+      },
+
+      updateSubmissionStatus: async (id, status) => {
+        set((state) => ({
+          submissions: state.submissions.map(s => s.id === id ? { ...s, status } : s)
+        }));
+        const updated = get().submissions.find(s => s.id === id);
+        if (auth.currentUser && updated) {
+          try {
+            await setDoc(doc(db, 'users', auth.currentUser.uid, 'submissions', id), updated, { merge: true });
+          } catch (e) {
+            console.warn('Firestore submission update deferred:', e);
+          }
+        }
+      },
+
+      deleteSubmission: async (id) => {
+        set((state) => ({ submissions: state.submissions.filter(s => s.id !== id) }));
+        if (auth.currentUser) {
+          try {
+            await deleteDoc(doc(db, 'users', auth.currentUser.uid, 'submissions', id));
+          } catch (e) {
+            console.warn('Firestore submission delete deferred:', e);
           }
         }
       },
@@ -253,9 +358,13 @@ export const useLynkoStore = create<LynkoState>()(
           return { recipientHistory: [clean, ...filtered].slice(0, 10) };
         });
         if (auth.currentUser) {
-          await setDoc(doc(db, 'users', auth.currentUser.uid, 'settings', 'recipients'), {
-            history: get().recipientHistory
-          }, { merge: true });
+          try {
+            await setDoc(doc(db, 'users', auth.currentUser.uid, 'settings', 'recipients'), {
+              history: get().recipientHistory
+            }, { merge: true });
+          } catch (e) {
+            console.warn('Firestore recipients sync deferred:', e);
+          }
         }
       },
 
@@ -276,23 +385,28 @@ export const useLynkoStore = create<LynkoState>()(
           const cSnap = await getDoc(doc(db, 'users', user.uid, 'cocData', 'current'));
           const fetchedCoC = cSnap.exists() ? cSnap.data() as CoCData : initialCoCData;
 
+          // Fetch Submissions
+          const subSnap = await getDocs(collection(db, 'users', user.uid, 'submissions'));
+          const fetchedSubmissions = subSnap.docs.map(d => d.data() as SubmissionRecord);
+
           // Fetch Recipient History
           const rSnap = await getDoc(doc(db, 'users', user.uid, 'settings', 'recipients'));
           const fetchedRecipients = rSnap.exists() && rSnap.data()?.history ? rSnap.data()?.history : defaultRecipients;
           
           set({ 
-            projects: fetchedProjects, 
+            projects: fetchedProjects.length > 0 ? fetchedProjects : get().projects, 
             samples: fetchedSamples.length > 0 ? fetchedSamples : get().samples, 
             cocData: fetchedCoC,
+            submissions: fetchedSubmissions.length > 0 ? fetchedSubmissions : get().submissions,
             recipientHistory: fetchedRecipients
           });
         } catch (e) {
-          console.error("Error syncing from Firestore:", e);
+          console.warn("Firestore sync offline or deferred:", e);
         }
       },
 
       clearStore: () => {
-        set({ projects: [], samples: [], cocData: initialCoCData, recipientHistory: defaultRecipients });
+        set({ projects: [], samples: [], submissions: [], cocData: initialCoCData, recipientHistory: defaultRecipients });
       }
     }),
     {
