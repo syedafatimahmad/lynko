@@ -7,28 +7,25 @@ import {
   StyleSheet, 
   ActivityIndicator, 
   Image, 
-  Platform,
   ScrollView,
   KeyboardAvoidingView,
+  Platform,
   Alert
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
 import { 
-  GoogleAuthProvider, 
-  signInWithPopup, 
-  signInWithRedirect,
-  signInWithEmailAndPassword,
-  createUserWithEmailAndPassword,
-  sendPasswordResetEmail,
-  sendEmailVerification,
-  signOut
-} from 'firebase/auth';
-import { doc, setDoc, getDoc, serverTimestamp } from 'firebase/firestore';
-import { auth, db } from '../config/firebase';
+  signUpWithEmail, 
+  signInWithEmail, 
+  resetPassword, 
+  resendVerificationEmail, 
+  signInWithGoogle, 
+  mapAuthError 
+} from '../services/authService';
 import { useAuthStore } from '../store/authStore';
 import { useLynkoStore } from '../store/lynkoStore';
 import { colors } from '../theme/colors';
-import { Ionicons } from '@expo/vector-icons';
+import { auth } from '../config/firebase';
 
 export default function SignInScreen() {
   const [isRegistering, setIsRegistering] = useState(false);
@@ -40,62 +37,24 @@ export default function SignInScreen() {
   const [resending, setResending] = useState(false);
   const [error, setError] = useState('');
   const [infoMessage, setInfoMessage] = useState('');
-  const [registeredEmailSuccess, setRegisteredEmailSuccess] = useState<string | null>(null);
+  const [registeredEmail, setRegisteredEmail] = useState<string | null>(null);
   const [quickActionType, setQuickActionType] = useState<'switchToRegister' | 'switchToLogin' | null>(null);
-  
+
   const setUser = useAuthStore((state) => state.setUser);
   const setUserData = useAuthStore((state) => state.setUserData);
   const syncFromFirestore = useLynkoStore((state) => state.syncFromFirestore);
 
   const validateEmail = (val: string) => {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    return emailRegex.test(val);
+    return emailRegex.test(val.trim());
   };
 
-  const finishLogin = async (firebaseUser: any) => {
-    try {
-      const defaultUserData = {
-        uid: firebaseUser.uid,
-        email: firebaseUser.email || '',
-        displayName: firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'Field Inspector',
-        photoURL: firebaseUser.photoURL || null,
-        role: 'user',
-      };
-
-      // 1. Immediately log in user in Zustand store (activates main app dashboard)
-      setUser(firebaseUser);
-      setUserData(defaultUserData);
-
-      // 2. Synchronize Firestore user document in background
-      try {
-        const userDocRef = doc(db, 'users', firebaseUser.uid);
-        const docSnap = await getDoc(userDocRef);
-        
-        if (docSnap.exists()) {
-          setUserData(docSnap.data());
-        } else {
-          await setDoc(userDocRef, { ...defaultUserData, createdAt: serverTimestamp() }, { merge: true });
-        }
-
-        await syncFromFirestore();
-      } catch (firestoreErr) {
-        console.warn('Background Firestore sync deferred:', firestoreErr);
-      }
-    } catch (err: any) {
-      console.error('Error during finishLogin:', err);
-      setUser(firebaseUser);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleEmailAuth = async () => {
+  const handleAuth = async () => {
     const cleanEmail = email.trim();
     setQuickActionType(null);
     setError('');
     setInfoMessage('');
-    
-    // 1. Validation Checks
+
     if (!cleanEmail) {
       setError('Please enter your email address.');
       return;
@@ -120,61 +79,31 @@ export default function SignInScreen() {
 
     try {
       if (isRegistering) {
-        // STEP 1: Create user in Firebase Auth
-        const userCredential = await createUserWithEmailAndPassword(auth, cleanEmail, password);
-        
-        // STEP 2: Dispatch official verification link email without signing out (to preserve token validity)
-        try {
-          await sendEmailVerification(userCredential.user);
-        } catch (verifErr: any) {
-          console.warn('Email verification send warning:', verifErr);
-        }
-
+        // 1. Sign Up & Send Verification Email
+        await signUpWithEmail(cleanEmail, password);
         setLoading(false);
-
-        // STEP 3: Switch UI to dedicated Verification Notice screen
-        setRegisteredEmailSuccess(cleanEmail);
+        setRegisteredEmail(cleanEmail);
       } else {
-        // Sign in existing account
-        const userCredential = await signInWithEmailAndPassword(auth, cleanEmail, password);
+        // 2. Sign In & Check Verification
+        const { user, profile, isVerified } = await signInWithEmail(cleanEmail, password, true);
         
-        // Check verification status
-        await userCredential.user.reload();
-        
-        if (!userCredential.user.emailVerified) {
-          // If not verified, show the verification screen with live check button
-          setRegisteredEmailSuccess(cleanEmail);
+        if (!isVerified) {
+          setRegisteredEmail(cleanEmail);
           setLoading(false);
           return;
         }
 
-        // Email is verified -> Proceed into app dashboard
-        await finishLogin(userCredential.user);
+        // Login verified user
+        setUser(user);
+        setUserData(profile);
+        await syncFromFirestore();
       }
     } catch (err: any) {
-      console.error('Auth error:', err);
-      const code = err.code || '';
-
-      if (code === 'auth/email-already-in-use') {
-        setQuickActionType('switchToLogin');
-        setError('This email is already registered.');
-      } else if (code === 'auth/user-not-found' || code === 'auth/invalid-credential' || code === 'auth/wrong-password') {
-        if (!isRegistering) {
-          setQuickActionType('switchToRegister');
-          setError('Incorrect password or no account exists with this email.');
-        } else {
-          setError('Could not create account. Please check your credentials.');
-        }
-      } else if (code === 'auth/invalid-email') {
-        setError('Invalid email address format. Please check for typos.');
-      } else if (code === 'auth/weak-password') {
-        setError('Password is too weak. Please use at least 6 characters.');
-      } else if (code === 'auth/too-many-requests') {
-        setError('Too many failed attempts. Please wait a moment or reset your password.');
-      } else if (code === 'auth/network-request-failed') {
-        setError('Network error. Please check your Wi-Fi or mobile data.');
-      } else {
-        setError(err.message || 'Authentication failed. Please check your credentials.');
+      console.error('Authentication Error:', err);
+      const parsed = mapAuthError(err);
+      setError(parsed.message);
+      if (parsed.actionType) {
+        setQuickActionType(parsed.actionType);
       }
       setLoading(false);
     }
@@ -186,46 +115,49 @@ export default function SignInScreen() {
       if (auth.currentUser) {
         await auth.currentUser.reload();
         if (auth.currentUser.emailVerified) {
-          await finishLogin(auth.currentUser);
+          const user = auth.currentUser;
+          setUser(user);
+          setUserData({
+            uid: user.uid,
+            email: user.email || '',
+            displayName: user.displayName || user.email?.split('@')[0] || 'Field Inspector',
+            role: 'user',
+          });
+          await syncFromFirestore();
           return;
         }
       } else if (email && password) {
-        const cred = await signInWithEmailAndPassword(auth, email.trim(), password);
-        await cred.user.reload();
-        if (cred.user.emailVerified) {
-          await finishLogin(cred.user);
+        const { user, profile, isVerified } = await signInWithEmail(email.trim(), password, true);
+        if (isVerified) {
+          setUser(user);
+          setUserData(profile);
+          await syncFromFirestore();
           return;
         }
       }
 
       Alert.alert(
         'Email Not Verified Yet',
-        'We have not detected your verification yet.\n\nPlease open your email, click the link sent to your inbox, then tap this button again.',
+        'We have not detected your verification yet.\n\nPlease open your email client, click the link sent to your inbox, then tap this button again.',
         [{ text: 'OK' }]
       );
-    } catch (e: any) {
-      Alert.alert('Notice', 'Could not check status. Please ensure you clicked the link in your email, then try again.');
+    } catch (err: any) {
+      Alert.alert('Notice', 'Please click the link in your email and try again.');
     } finally {
       setCheckingVerification(false);
     }
   };
 
-  const handleResendVerification = async () => {
+  const handleResendLink = async () => {
     setResending(true);
     try {
-      if (auth.currentUser) {
-        await sendEmailVerification(auth.currentUser);
-        Alert.alert('Verification Link Resent', `A fresh verification link has been sent to ${auth.currentUser.email}.`);
-      } else if (email && password) {
-        const cred = await signInWithEmailAndPassword(auth, email.trim(), password);
-        await sendEmailVerification(cred.user);
-        Alert.alert('Verification Link Resent', `A fresh verification link has been sent to ${email.trim()}.`);
-      } else {
-        await sendPasswordResetEmail(auth, registeredEmailSuccess || email.trim());
-        Alert.alert('Link Sent', `An account link has been sent to ${registeredEmailSuccess || email.trim()}.`);
-      }
-    } catch (e: any) {
-      Alert.alert('Notice', e.message || 'Could not resend at this moment.');
+      await resendVerificationEmail(auth.currentUser || registeredEmail || email.trim(), password);
+      Alert.alert(
+        'Verification Link Resent', 
+        `A fresh verification link has been dispatched to ${registeredEmail || email.trim()}.\nPlease check your inbox (and Spam folder).`
+      );
+    } catch (err: any) {
+      Alert.alert('Notice', err.message || 'Could not dispatch fresh link at this moment.');
     } finally {
       setResending(false);
     }
@@ -248,71 +180,44 @@ export default function SignInScreen() {
     setInfoMessage('');
 
     try {
-      await sendPasswordResetEmail(auth, cleanEmail);
+      await resetPassword(cleanEmail);
       setLoading(false);
       setInfoMessage(`Password reset link dispatched to ${cleanEmail}. Please check your inbox and spam folder.`);
       Alert.alert(
         'Password Reset Link Sent',
-        `A password reset link has been dispatched to ${cleanEmail}.\n\nPlease check your inbox (and spam/junk folder) to set your new password.`,
+        `A password reset link has been dispatched to ${cleanEmail}.\n\nPlease check your email (and spam folder) to set your new password.`,
         [{ text: 'OK' }]
       );
     } catch (err: any) {
       setLoading(false);
-      const code = err.code || '';
-      if (code === 'auth/user-not-found') {
-        setError('No inspector account exists with this email address.');
-      } else {
-        setError(err.message || 'Could not send reset email. Please try again.');
-      }
+      const parsed = mapAuthError(err);
+      setError(parsed.message);
     }
   };
 
-  const handleGoogleSignIn = async () => {
+  const handleGoogleAuth = async () => {
     setLoading(true);
     setError('');
     setInfoMessage('');
     setQuickActionType(null);
 
     try {
-      const provider = new GoogleAuthProvider();
-      provider.setCustomParameters({ prompt: 'select_account' });
-      
-      if (Platform.OS === 'web') {
-        const userCredential = await signInWithPopup(auth, provider);
-        await finishLogin(userCredential.user);
-      } else {
-        try {
-          const userCredential = await signInWithPopup(auth, provider);
-          await finishLogin(userCredential.user);
-        } catch (popupErr: any) {
-          if (popupErr.code === 'auth/popup-blocked') {
-            await signInWithRedirect(auth, provider);
-          } else {
-            setError('Google sign-in popup is not supported directly in Expo Go. Please use Email & Password above to sign in or create an account.');
-            setLoading(false);
-          }
-        }
-      }
+      const { user, profile } = await signInWithGoogle();
+      setUser(user);
+      setUserData(profile);
+      await syncFromFirestore();
     } catch (err: any) {
-      console.error('Google Sign in error:', err);
-      const code = err.code || '';
-      if (code === 'auth/popup-closed-by-user') {
-        setError('Google sign-in was cancelled.');
-      } else if (code === 'auth/account-exists-with-different-credential') {
-        setError('An account already exists with this email. Please sign in with your email and password.');
-      } else if (code === 'auth/network-request-failed') {
-        setError('Network error. Please check your internet connection.');
-      } else {
-        setError(err.message || 'Could not sign in with Google. Please use email & password.');
-      }
+      console.error('Google Auth Error:', err);
+      const parsed = mapAuthError(err);
+      setError(parsed.message);
       setLoading(false);
     }
   };
 
-  // ==========================================
-  // VIEW: Dedicated Verification Sent Screen
-  // ==========================================
-  if (registeredEmailSuccess) {
+  // =========================================================================
+  // VIEW: Dedicated Verification Screen
+  // =========================================================================
+  if (registeredEmail) {
     return (
       <SafeAreaView style={styles.safeArea}>
         <View style={styles.verificationContainer}>
@@ -324,21 +229,20 @@ export default function SignInScreen() {
             <Text style={styles.verificationTitle}>Verify Your Email</Text>
             
             <Text style={styles.verificationDesc}>
-              We have dispatched an official verification link to:
+              We have dispatched an official activation link to:
             </Text>
             
             <View style={styles.emailBadge}>
-              <Text style={styles.emailBadgeText}>{registeredEmailSuccess}</Text>
+              <Text style={styles.emailBadgeText}>{registeredEmail}</Text>
             </View>
 
             <View style={styles.noticeBox}>
               <Ionicons name="information-circle-outline" size={20} color={colors.primary} style={{ marginRight: 8, marginTop: 2 }} />
               <Text style={styles.noticeText}>
-                Please check your inbox (and <Text style={{ fontWeight: 'bold' }}>Spam/Junk</Text> folder). Click the link in the email, then tap the button below.
+                Please open your email (and check <Text style={{ fontWeight: 'bold' }}>Spam/Junk</Text>). Click the link in the email, then tap the button below.
               </Text>
             </View>
 
-            {/* Main Action: I Have Verified Button */}
             <TouchableOpacity 
               style={styles.primaryButton}
               onPress={handleCheckVerification}
@@ -351,10 +255,9 @@ export default function SignInScreen() {
               )}
             </TouchableOpacity>
 
-            {/* Resend Link */}
             <TouchableOpacity 
               style={[styles.resendLinkBtn, { marginTop: 16 }]}
-              onPress={handleResendVerification}
+              onPress={handleResendLink}
               disabled={resending}
             >
               {resending ? (
@@ -364,12 +267,10 @@ export default function SignInScreen() {
               )}
             </TouchableOpacity>
 
-            {/* Log Out / Back */}
             <TouchableOpacity 
               style={styles.resendLinkBtn}
-              onPress={async () => {
-                try { await signOut(auth); } catch(e) {}
-                setRegisteredEmailSuccess(null);
+              onPress={() => {
+                setRegisteredEmail(null);
                 setIsRegistering(false);
                 setError('');
               }}
@@ -382,9 +283,9 @@ export default function SignInScreen() {
     );
   }
 
-  // ==========================================
+  // =========================================================================
   // VIEW: Main Sign In / Create Account Screen
-  // ==========================================
+  // =========================================================================
   return (
     <SafeAreaView style={styles.safeArea}>
       <KeyboardAvoidingView 
@@ -406,14 +307,13 @@ export default function SignInScreen() {
               </Text>
             </View>
 
-            {/* Error Banner with Smart Quick Actions */}
+            {/* Error Banner with Smart Tab Switchers */}
             {error ? (
               <View style={styles.alertBannerError}>
                 <Ionicons name="alert-circle" size={20} color={colors.error} style={{ marginRight: 8, marginTop: 1 }} />
                 <View style={{ flex: 1 }}>
                   <Text style={styles.alertTextError}>{error}</Text>
                   
-                  {/* Shortcut 1: Switch to Login if duplicate email */}
                   {quickActionType === 'switchToLogin' && (
                     <TouchableOpacity 
                       style={styles.switchAlertBtn} 
@@ -427,7 +327,6 @@ export default function SignInScreen() {
                     </TouchableOpacity>
                   )}
 
-                  {/* Shortcut 2: Switch to Register if account not found */}
                   {quickActionType === 'switchToRegister' && (
                     <TouchableOpacity 
                       style={styles.switchAlertBtn} 
@@ -444,7 +343,7 @@ export default function SignInScreen() {
               </View>
             ) : null}
 
-            {/* Info / Success Banner */}
+            {/* Success Banner */}
             {infoMessage ? (
               <View style={styles.alertBannerSuccess}>
                 <Ionicons name="checkmark-circle" size={20} color="#047857" style={{ marginRight: 8 }} />
@@ -478,7 +377,7 @@ export default function SignInScreen() {
               </TouchableOpacity>
             </View>
 
-            {/* Email Address Input */}
+            {/* Email Address Field */}
             <View style={styles.inputGroup}>
               <Text style={styles.inputLabel}>Email Address</Text>
               <View style={styles.inputWrapper}>
@@ -500,7 +399,7 @@ export default function SignInScreen() {
               </View>
             </View>
 
-            {/* Password Input */}
+            {/* Password Field */}
             <View style={styles.inputGroup}>
               <Text style={styles.inputLabel}>Password</Text>
               <View style={styles.inputWrapper}>
@@ -526,10 +425,10 @@ export default function SignInScreen() {
               </TouchableOpacity>
             ) : null}
 
-            {/* Primary Action Button (Sign In / Register) */}
+            {/* Primary Action Button */}
             <TouchableOpacity 
               style={styles.primaryButton} 
-              onPress={handleEmailAuth} 
+              onPress={handleAuth} 
               disabled={loading}
             >
               {loading ? (
@@ -551,7 +450,7 @@ export default function SignInScreen() {
             {/* Google Sign-In Button */}
             <TouchableOpacity 
               style={styles.googleButton} 
-              onPress={handleGoogleSignIn} 
+              onPress={handleGoogleAuth} 
               disabled={loading}
             >
               <View style={styles.googleButtonContent}>
