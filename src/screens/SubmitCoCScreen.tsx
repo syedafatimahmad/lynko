@@ -16,7 +16,7 @@ import * as Sharing from 'expo-sharing';
 import { useAuthStore } from '../store/authStore';
 import { useLynkoStore, SubmissionRecord } from '../store/lynkoStore';
 import { colors } from '../theme/colors';
-import { generatePDF } from '../utils/emailDispatcher';
+import { generatePDF } from '../utils/pdfGenerator';
 
 export default function SubmitCoCScreen({ route, navigation }: any) {
   const user = useAuthStore((state) => state.user);

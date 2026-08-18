@@ -12,7 +12,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLynkoStore, SubmissionRecord } from '../store/lynkoStore';
 import { colors } from '../theme/colors';
-import { generateCoCPdf } from '../utils/pdfGenerator';
+import { generatePDF } from '../utils/pdfGenerator';
 import * as Sharing from 'expo-sharing';
 import { Ionicons } from '@expo/vector-icons';
 
@@ -42,15 +42,17 @@ export default function SubmittedCoCScreen({ navigation }: any) {
 
   const handleViewPdf = async (sub: SubmissionRecord) => {
     try {
-      const pdfUri = await generateCoCPdf(cocData, samples);
-      if (await Sharing.isAvailableAsync()) {
-        await Sharing.shareAsync(pdfUri, {
-          mimeType: 'application/pdf',
-          dialogTitle: `Chain of Custody - ${sub.poNumber || 'Submitted'}`,
-          UTI: 'com.adobe.pdf',
-        });
-      } else {
-        await Share.share({ url: pdfUri, title: `CoC ${sub.poNumber}` });
+      const pdfUri = await generatePDF(null, cocData, samples);
+      if (pdfUri) {
+        if (await Sharing.isAvailableAsync()) {
+          await Sharing.shareAsync(pdfUri, {
+            mimeType: 'application/pdf',
+            dialogTitle: `Chain of Custody - ${sub.poNumber || 'Submitted'}`,
+            UTI: 'com.adobe.pdf',
+          });
+        } else {
+          await Share.share({ url: pdfUri, title: `CoC ${sub.poNumber}` });
+        }
       }
     } catch (e: any) {
       Alert.alert('Error', 'Could not open PDF document.');
