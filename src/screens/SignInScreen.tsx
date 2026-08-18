@@ -36,6 +36,7 @@ export default function SignInScreen() {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [resending, setResending] = useState(false);
   const [error, setError] = useState('');
   const [infoMessage, setInfoMessage] = useState('');
   const [registeredEmailSuccess, setRegisteredEmailSuccess] = useState<string | null>(null);
@@ -118,21 +119,24 @@ export default function SignInScreen() {
 
     try {
       if (isRegistering) {
-        // STEP A: Create the user account in Firebase Auth
+        // STEP 1: Create user in Firebase Auth
         const userCredential = await createUserWithEmailAndPassword(auth, cleanEmail, password);
         
-        // STEP B: Dispatch official verification link email
+        // STEP 2: Dispatch official verification link email and await response
         try {
           await sendEmailVerification(userCredential.user);
-        } catch (verifErr) {
+        } catch (verifErr: any) {
           console.warn('Email verification send warning:', verifErr);
         }
 
-        // STEP C: Sign out temporary session so user is NOT auto-logged in without seeing verification
-        await signOut(auth);
+        // STEP 3: Cleanly sign out session so user verifies before normal access
+        try {
+          await signOut(auth);
+        } catch (soErr) {}
+
         setLoading(false);
 
-        // STEP D: Transition UI to dedicated Verification Notice screen
+        // STEP 4: Switch UI to dedicated Verification Notice screen
         setRegisteredEmailSuccess(cleanEmail);
       } else {
         // Sign in existing account
@@ -168,6 +172,26 @@ export default function SignInScreen() {
     }
   };
 
+  const handleResendVerification = async () => {
+    if (!registeredEmailSuccess) return;
+    setResending(true);
+    try {
+      if (password) {
+        const cred = await signInWithEmailAndPassword(auth, registeredEmailSuccess, password);
+        await sendEmailVerification(cred.user);
+        await signOut(auth);
+        Alert.alert('Verification Link Resent', `A fresh verification link has been sent to ${registeredEmailSuccess}.`);
+      } else {
+        await sendPasswordResetEmail(auth, registeredEmailSuccess);
+        Alert.alert('Link Sent', `An account link has been sent to ${registeredEmailSuccess}.`);
+      }
+    } catch (e: any) {
+      Alert.alert('Notice', e.message || 'Could not resend at this moment.');
+    } finally {
+      setResending(false);
+    }
+  };
+
   const handleForgotPassword = async () => {
     const cleanEmail = email.trim();
     if (!cleanEmail) {
@@ -190,7 +214,7 @@ export default function SignInScreen() {
       setInfoMessage(`Password reset link dispatched to ${cleanEmail}. Please check your inbox and spam folder.`);
       Alert.alert(
         'Password Reset Link Sent',
-        `A password reset link has been dispatched to ${cleanEmail}.\n\nPlease check your inbox (and spam/junk folder) to set your new password.`,
+        `A password reset link has been dispatched to ${cleanEmail}.\n\nPlease check your inbox (and spam/junk folder) to set a new password.`,
         [{ text: 'OK' }]
       );
     } catch (err: any) {
@@ -281,10 +305,22 @@ export default function SignInScreen() {
                 setRegisteredEmailSuccess(null);
                 setIsRegistering(false);
                 setError('');
-                setInfoMessage('Account created! Please sign in with your password.');
+                setInfoMessage('Account registered! Please sign in with your password.');
               }}
             >
               <Text style={styles.primaryButtonText}>Proceed to Sign In</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity 
+              style={[styles.resendLinkBtn, { marginTop: 16 }]}
+              onPress={handleResendVerification}
+              disabled={resending}
+            >
+              {resending ? (
+                <ActivityIndicator size="small" color={colors.primaryContainer} />
+              ) : (
+                <Text style={styles.resendLinkText}>🔄 Didn't receive it? Resend Link</Text>
+              )}
             </TouchableOpacity>
 
             <TouchableOpacity 
@@ -294,7 +330,7 @@ export default function SignInScreen() {
                 setIsRegistering(true);
               }}
             >
-              <Text style={styles.resendLinkText}>Back to Registration</Text>
+              <Text style={[styles.resendLinkText, { color: colors.secondary, marginTop: 4 }]}>Back to Registration</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -784,12 +820,12 @@ const styles = StyleSheet.create({
     lineHeight: 18,
   },
   resendLinkBtn: {
-    marginTop: 14,
     paddingVertical: 6,
+    alignItems: 'center',
   },
   resendLinkText: {
     fontSize: 13,
-    color: colors.secondary,
-    fontWeight: '600',
+    color: colors.primaryContainer,
+    fontWeight: '700',
   },
 });
