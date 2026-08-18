@@ -38,17 +38,17 @@ export default function ProjectsScreen({ navigation }: any) {
     <SafeAreaView style={styles.safeArea}>
       {/* Header with Submissions History shortcut */}
       <View style={styles.header}>
-        <View>
+        <View style={{ flex: 1, paddingRight: 8 }}>
           <Text style={styles.title}>Projects</Text>
-          <Text style={styles.subtitle}>Manage and search inspection jobs</Text>
+          <Text style={styles.subtitle} numberOfLines={1}>Manage and search inspection jobs</Text>
         </View>
 
         <TouchableOpacity 
           style={styles.submissionsBtn} 
           onPress={() => navigation.navigate('SubmittedCoC')}
         >
-          <Ionicons name="document-text-outline" size={18} color={colors.primary} style={{ marginRight: 6 }} />
-          <Text style={styles.submissionsBtnText}>Submitted CoCs</Text>
+          <Ionicons name="document-text-outline" size={16} color={colors.primary} style={{ marginRight: 4 }} />
+          <Text style={styles.submissionsBtnText}>Submitted</Text>
           {submissions.length > 0 && (
             <View style={styles.submissionsCountBadge}>
               <Text style={styles.submissionsCountText}>{submissions.length}</Text>
@@ -194,9 +194,10 @@ const styles = StyleSheet.create({
     backgroundColor: '#E6F8F7',
     borderWidth: 1,
     borderColor: colors.primaryContainer,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
+    paddingHorizontal: 9,
+    paddingVertical: 5,
     borderRadius: 20,
+    flexShrink: 0,
   },
   submissionsBtnText: {
     fontSize: 12,

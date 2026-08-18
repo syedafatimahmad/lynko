@@ -322,17 +322,17 @@ export default function ChainOfCustodyScreen({ navigation }: any) {
         {/* Card 3: Project Photos */}
         <View style={styles.card}>
           <View style={styles.cardHeaderRow}>
-            <View>
+            <View style={{ flex: 1, paddingRight: 6 }}>
               <Text style={styles.cardTitle}>Project Photos ({photos.length})</Text>
-              <Text style={styles.cardSubtitle}>Attach site context and sample location images</Text>
+              <Text style={styles.cardSubtitle} numberOfLines={1}>Attach site context images</Text>
             </View>
             <View style={styles.photoActionsRow}>
               <TouchableOpacity style={styles.photoActionBtn} onPress={handleTakePhoto}>
-                <Ionicons name="camera" size={18} color={colors.primaryContainer} />
+                <Ionicons name="camera" size={15} color={colors.primaryContainer} />
                 <Text style={styles.photoActionText}>Camera</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={[styles.photoActionBtn, { marginLeft: 8 }]} onPress={handlePickPhoto}>
-                <Ionicons name="images" size={18} color={colors.primaryContainer} />
+              <TouchableOpacity style={[styles.photoActionBtn, { marginLeft: 6 }]} onPress={handlePickPhoto}>
+                <Ionicons name="images" size={15} color={colors.primaryContainer} />
                 <Text style={styles.photoActionText}>Gallery</Text>
               </TouchableOpacity>
             </View>
@@ -553,9 +553,9 @@ const styles = StyleSheet.create({
   contactDetailsBox: { backgroundColor: '#F8FAFC', padding: 12, borderRadius: 6, marginBottom: 8, borderWidth: 1, borderColor: '#E2E8F0' },
   contactCompany: { fontSize: 15, fontWeight: 'bold', color: colors.onSurface, marginBottom: 2 },
   contactSub: { fontSize: 13, color: colors.secondary },
-  photoActionsRow: { flexDirection: 'row' },
-  photoActionBtn: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F1F5F9', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 6, borderWidth: 1, borderColor: '#CBD5E1' },
-  photoActionText: { marginLeft: 4, fontSize: 12, fontWeight: '600', color: colors.primaryContainer },
+  photoActionsRow: { flexDirection: 'row', alignItems: 'center', flexShrink: 0 },
+  photoActionBtn: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F1F5F9', paddingHorizontal: 8, paddingVertical: 5, borderRadius: 6, borderWidth: 1, borderColor: '#CBD5E1' },
+  photoActionText: { marginLeft: 3, fontSize: 11, fontWeight: '700', color: colors.primaryContainer },
   photoGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 10 },
   photoThumbWrapper: { width: 80, height: 80, borderRadius: 8, overflow: 'hidden', borderWidth: 1, borderColor: '#CBD5E1', position: 'relative' },
   photoThumbnail: { width: '100%', height: '100%' },
