@@ -1,5 +1,17 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity, Image, Platform, Switch, Alert } from 'react-native';
+import { 
+  View, 
+  Text, 
+  StyleSheet, 
+  ScrollView, 
+  TextInput, 
+  TouchableOpacity, 
+  Image, 
+  Platform, 
+  Switch, 
+  Alert,
+  ActivityIndicator 
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import { useLynkoStore } from '../store/lynkoStore';
@@ -8,7 +20,7 @@ import { generatePDF } from '../utils/pdfGenerator';
 import SignatureModal from '../components/SignatureModal';
 import { Ionicons } from '@expo/vector-icons';
 import * as Sharing from 'expo-sharing';
-import * as MailComposer from 'expo-mail-composer';
+import * as Print from 'expo-print';
 import { formatPhoneNumber, formatZipCode, formatPONumber } from '../utils/formatters';
 
 export default function ChainOfCustodyScreen({ navigation }: any) {
@@ -19,6 +31,7 @@ export default function ChainOfCustodyScreen({ navigation }: any) {
   const [saveTemplate, setSaveTemplate] = useState(false);
   const [tosAgreed, setTosAgreed] = useState(false);
   const [isEditingContacts, setIsEditingContacts] = useState(false);
+  const [previewing, setPreviewing] = useState(false);
 
   const photos = cocData.photos || [];
 
@@ -67,6 +80,31 @@ export default function ChainOfCustodyScreen({ navigation }: any) {
     updateCoCData({ photos: updated });
   };
 
+  const handlePreviewCoC = async () => {
+    if (previewing) return;
+    setPreviewing(true);
+    try {
+      const uri = await generatePDF(null, cocData, samples);
+      if (uri) {
+        const canShare = await Sharing.isAvailableAsync();
+        if (canShare) {
+          await Sharing.shareAsync(uri, { 
+            UTI: '.pdf', 
+            mimeType: 'application/pdf',
+            dialogTitle: `Chain of Custody - ${cocData.poNumber || 'Preview'}`
+          });
+        } else {
+          await Print.printAsync({ uri });
+        }
+      }
+    } catch (err: any) {
+      console.error('Error previewing PDF:', err);
+      Alert.alert('Preview Notice', 'Could not open PDF viewer on this device.');
+    } finally {
+      setPreviewing(false);
+    }
+  };
+
   const handleSubmit = () => {
     if (!cocData.poNumber || !cocData.description || !cocData.zipCode) {
       Alert.alert('Missing Information', 'Please provide PO number, Description, and Zipcode.');
@@ -100,147 +138,137 @@ export default function ChainOfCustodyScreen({ navigation }: any) {
       </View>
 
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        <Text style={styles.projectContext}>PO #: {cocData.poNumber || 'New'} • {cocData.accountInfo || 'Alpha Environmental'}</Text>
-        
-        {/* Card 1: Project Info */}
+        <Text style={styles.projectContext}>Project: {cocData.description || 'Alpha Environmental Site'}</Text>
+
+        {/* Card 1: Project Information */}
         <View style={styles.card}>
-          <Text style={styles.cardTitle}>Project Info</Text>
-          
+          <Text style={styles.cardTitle}>Project Information</Text>
+          <Text style={styles.cardSubtitle}>Alpha Environmental Field Operations</Text>
+
           <View style={styles.inputGroup}>
-            <Text style={styles.label}>Description</Text>
-            <TextInput 
-              style={styles.input} 
-              placeholder="e.g. Mold & Asbestos Inspection" 
-              value={cocData.description} 
-              onChangeText={(text) => updateCoCData({ description: text })} 
+            <Text style={styles.label}>PO NUMBER</Text>
+            <TextInput
+              style={styles.input}
+              value={cocData.poNumber}
+              onChangeText={(text) => updateCoCData({ poNumber: formatPONumber(text) })}
+              placeholder="e.g. 47674"
+              placeholderTextColor="#94A3B8"
+              keyboardType="number-pad"
             />
           </View>
-          
-          <View style={styles.row}>
-            <View style={[styles.inputGroup, { flex: 1, marginRight: 8 }]}>
-              <Text style={styles.label}>PO #</Text>
-              <TextInput 
-                style={styles.input} 
-                placeholder="PO-99482"
-                value={cocData.poNumber} 
-                onChangeText={(text) => updateCoCData({ poNumber: formatPONumber(text) })} 
-                autoCapitalize="characters"
-              />
-            </View>
-            <View style={[styles.inputGroup, { flex: 1, marginLeft: 8 }]}>
-              <Text style={styles.label}>Zipcode</Text>
-              <TextInput 
-                style={styles.input} 
-                placeholder="75208"
-                value={cocData.zipCode} 
-                onChangeText={(text) => updateCoCData({ zipCode: formatZipCode(text) })} 
-                keyboardType="numeric"
-              />
-            </View>
+
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>DESCRIPTION</Text>
+            <TextInput
+              style={styles.input}
+              value={cocData.description}
+              onChangeText={(text) => updateCoCData({ description: text })}
+              placeholder="e.g. Commercial Asbestos & Lead Inspection"
+              placeholderTextColor="#94A3B8"
+            />
           </View>
-          
-          <View style={styles.row}>
-            <View style={[styles.inputGroup, { flex: 1, marginRight: 8 }]}>
-              <Text style={styles.label}>Sampling date</Text>
-              <TextInput 
-                style={styles.input} 
-                value={cocData.samplingDate} 
-                onChangeText={(text) => updateCoCData({ samplingDate: text })} 
-              />
-            </View>
-            <View style={[styles.inputGroup, { flex: 1, marginLeft: 8 }]}>
-              <Text style={styles.label}>Sampling time</Text>
-              <TextInput 
-                style={styles.input} 
-                value={cocData.samplingTime} 
-                onChangeText={(text) => updateCoCData({ samplingTime: text })} 
-              />
-            </View>
+
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>ZIP CODE</Text>
+            <TextInput
+              style={styles.input}
+              value={cocData.zipCode}
+              onChangeText={(text) => updateCoCData({ zipCode: formatZipCode(text) })}
+              placeholder="e.g. 92101"
+              placeholderTextColor="#94A3B8"
+              keyboardType="number-pad"
+              maxLength={5}
+            />
           </View>
         </View>
 
-        {/* Card 2: Contact Info */}
+        {/* Card 2: Contact Information */}
         <View style={styles.card}>
           <View style={styles.cardHeaderRow}>
-            <Text style={styles.cardTitle}>Contact Info</Text>
+            <Text style={styles.cardTitle}>Contact Information</Text>
             <TouchableOpacity onPress={() => setIsEditingContacts(!isEditingContacts)}>
-              <Text style={styles.linkText}>{isEditingContacts ? "Done" : "Edit Contacts"}</Text>
+              <Text style={styles.linkText}>{isEditingContacts ? 'Done' : 'Edit Contacts'}</Text>
             </TouchableOpacity>
           </View>
-          
-          <View style={styles.infoBox}>
-            {isEditingContacts ? (
-              <View style={{ gap: 12 }}>
-                <View>
-                  <Text style={styles.label}>Account</Text>
-                  <TextInput style={styles.input} value={cocData.accountInfo} onChangeText={t => updateCoCData({ accountInfo: t })} />
-                </View>
-                <View>
-                  <Text style={styles.label}>Contacts</Text>
-                  <TextInput style={styles.input} value={cocData.contactName} onChangeText={t => updateCoCData({ contactName: t })} />
-                </View>
-                <View>
-                  <Text style={styles.label}>Address</Text>
-                  <TextInput style={styles.input} value={cocData.contactAddress} onChangeText={t => updateCoCData({ contactAddress: t })} />
-                </View>
-                <View>
-                  <Text style={styles.label}>Phone</Text>
-                  <TextInput 
-                    style={styles.input} 
-                    value={cocData.contactPhone} 
-                    onChangeText={t => updateCoCData({ contactPhone: formatPhoneNumber(t) })} 
-                    keyboardType="phone-pad"
-                    placeholder="(214) 994-9874"
-                  />
-                </View>
+
+          {isEditingContacts ? (
+            <View>
+              <View style={styles.inputGroup}>
+                <Text style={styles.label}>COMPANY NAME</Text>
+                <TextInput
+                  style={styles.input}
+                  value={cocData.contactName}
+                  onChangeText={(text) => updateCoCData({ contactName: text })}
+                  placeholder="Alpha Environmental Inc."
+                  placeholderTextColor="#94A3B8"
+                />
               </View>
-            ) : (
-              <>
-                <View style={styles.infoRow}><Text style={styles.infoLabel}>Account</Text><Text style={styles.infoValue}>{cocData.accountInfo || 'None'}</Text></View>
-                <View style={styles.infoRow}><Text style={styles.infoLabel}>Contacts</Text><Text style={styles.infoValue}>{cocData.contactName || 'None'}</Text></View>
-                <View style={styles.infoRow}><Text style={styles.infoLabel}>Address</Text><Text style={[styles.infoValue, {flex:1, textAlign:'right'}]}>{cocData.contactAddress || 'None'}</Text></View>
-                <View style={styles.infoRow}><Text style={styles.infoLabel}>Phone</Text><Text style={styles.infoValue}>{cocData.contactPhone || 'None'}</Text></View>
-              </>
-            )}
-          </View>
-          
-          <View style={[styles.inputGroup, {marginTop: 16}]}>
-            <Text style={styles.label}>Sampled by</Text>
-            <TextInput 
-              style={styles.input} 
-              placeholder="Enter inspector name" 
-              value={cocData.sampledBy} 
-              onChangeText={t => updateCoCData({ sampledBy: t })} 
+              <View style={styles.inputGroup}>
+                <Text style={styles.label}>ADDRESS</Text>
+                <TextInput
+                  style={styles.input}
+                  value={cocData.contactAddress}
+                  onChangeText={(text) => updateCoCData({ contactAddress: text })}
+                  placeholder="San Diego, CA 92101"
+                  placeholderTextColor="#94A3B8"
+                />
+              </View>
+              <View style={styles.inputGroup}>
+                <Text style={styles.label}>PHONE NUMBER</Text>
+                <TextInput
+                  style={styles.input}
+                  value={cocData.contactPhone}
+                  onChangeText={(text) => updateCoCData({ contactPhone: formatPhoneNumber(text) })}
+                  placeholder="(619) 555-0199"
+                  placeholderTextColor="#94A3B8"
+                  keyboardType="phone-pad"
+                />
+              </View>
+            </View>
+          ) : (
+            <View style={styles.contactDetailsBox}>
+              <Text style={styles.contactCompany}>{cocData.contactName || 'Alpha Environmental'}</Text>
+              <Text style={styles.contactSub}>{cocData.contactAddress || 'Field Inspection Branch'}</Text>
+              <Text style={styles.contactSub}>{cocData.contactPhone || 'Direct Lab Dispatch'}</Text>
+            </View>
+          )}
+
+          <View style={[styles.inputGroup, { marginTop: 8 }]}>
+            <Text style={styles.label}>SAMPLED BY (INSPECTOR NAME)</Text>
+            <TextInput
+              style={styles.input}
+              value={cocData.sampledBy}
+              onChangeText={(text) => updateCoCData({ sampledBy: text })}
+              placeholder="e.g. Ali Saleh"
+              placeholderTextColor="#94A3B8"
             />
           </View>
         </View>
 
-        {/* Card 3: Project Site Photos */}
+        {/* Card 3: Project Photos */}
         <View style={styles.card}>
           <View style={styles.cardHeaderRow}>
             <View>
-              <Text style={styles.cardTitle}>Project Site Photos</Text>
-              <Text style={styles.cardSubtitle}>{photos.length} Photos Attached (Prints 8/page in PDF)</Text>
+              <Text style={styles.cardTitle}>Project Photos ({photos.length})</Text>
+              <Text style={styles.cardSubtitle}>Attach site context and sample location images</Text>
             </View>
-          </View>
-
-          <View style={styles.photoActionsRow}>
-            <TouchableOpacity style={styles.photoBtn} onPress={handleTakePhoto}>
-              <Ionicons name="camera" size={18} color={colors.primaryContainer} style={{ marginRight: 6 }} />
-              <Text style={styles.photoBtnText}>Take Photo</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity style={[styles.photoBtn, styles.photoBtnSecondary]} onPress={handlePickPhoto}>
-              <Ionicons name="images" size={18} color={colors.primaryContainer} style={{ marginRight: 6 }} />
-              <Text style={styles.photoBtnText}>Upload Library</Text>
-            </TouchableOpacity>
+            <View style={styles.photoActionsRow}>
+              <TouchableOpacity style={styles.photoActionBtn} onPress={handleTakePhoto}>
+                <Ionicons name="camera" size={18} color={colors.primaryContainer} />
+                <Text style={styles.photoActionText}>Camera</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.photoActionBtn, { marginLeft: 8 }]} onPress={handlePickPhoto}>
+                <Ionicons name="images" size={18} color={colors.primaryContainer} />
+                <Text style={styles.photoActionText}>Gallery</Text>
+              </TouchableOpacity>
+            </View>
           </View>
 
           {photos.length > 0 ? (
             <View style={styles.photoGrid}>
               {photos.map((uri, index) => (
                 <View key={index} style={styles.photoThumbWrapper}>
-                  <Image source={{ uri }} style={styles.photoThumbnail} />
+                  <Image source={{ uri }} style={styles.photoThumbnail} resizeMode="cover" />
                   <TouchableOpacity style={styles.photoDeleteBtn} onPress={() => handleRemovePhoto(index)}>
                     <Ionicons name="close" size={14} color="#fff" />
                   </TouchableOpacity>
@@ -291,7 +319,7 @@ export default function ChainOfCustodyScreen({ navigation }: any) {
             </Text>
           </TouchableOpacity>
           {cocData.inspectorSignature && (
-            <Image source={{ uri: cocData.inspectorSignature }} style={styles.signatureImage} />
+            <Image source={{ uri: cocData.inspectorSignature }} style={styles.signatureImage} resizeMode="contain" />
           )}
 
           <View style={styles.toggleRow}>
@@ -313,14 +341,14 @@ export default function ChainOfCustodyScreen({ navigation }: any) {
         <View style={styles.actionButtonsRow}>
           <TouchableOpacity 
             style={[styles.actionButton, styles.previewButton]}
-            onPress={async () => {
-              const uri = await generatePDF(null, cocData, samples);
-              if (uri) {
-                await Sharing.shareAsync(uri, { UTI: '.pdf', mimeType: 'application/pdf' });
-              }
-            }}
+            onPress={handlePreviewCoC}
+            disabled={previewing}
           >
-            <Text style={styles.previewButtonText}>Preview CoC</Text>
+            {previewing ? (
+              <ActivityIndicator color={colors.primaryContainer} size="small" />
+            ) : (
+              <Text style={styles.previewButtonText}>Preview CoC</Text>
+            )}
           </TouchableOpacity>
           <TouchableOpacity 
             style={[styles.actionButton, styles.submitButton]}
@@ -358,69 +386,35 @@ const styles = StyleSheet.create({
   label: { fontSize: 13, fontWeight: '600', color: colors.secondary, marginBottom: 4 },
   input: { borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 4, paddingHorizontal: 12, paddingVertical: 10, fontSize: 15, color: colors.onSurface },
   row: { flexDirection: 'row' },
-  infoBox: { backgroundColor: '#F1F5F9', borderRadius: 4, padding: 12, gap: 8 },
-  infoRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
-  infoLabel: { color: colors.secondary, fontWeight: '500', fontSize: 14 },
-  infoValue: { color: colors.onSurface, fontWeight: '600', fontSize: 14 },
-  photoActionsRow: { flexDirection: 'row', gap: 10, marginBottom: 14 },
-  photoBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: colors.primaryContainer, borderRadius: 6, paddingVertical: 10, backgroundColor: '#E6F8F7' },
-  photoBtnSecondary: { backgroundColor: colors.surfaceContainerLowest },
-  photoBtnText: { color: colors.primaryContainer, fontWeight: 'bold', fontSize: 14 },
-  photoGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
-  photoThumbWrapper: { width: 76, height: 76, borderRadius: 6, overflow: 'hidden', position: 'relative', borderWidth: 1, borderColor: '#cbd5e1' },
-  photoThumbnail: { width: '100%', height: '100%', resizeMode: 'cover' },
-  photoDeleteBtn: { position: 'absolute', top: 2, right: 2, backgroundColor: 'rgba(0,0,0,0.6)', width: 20, height: 20, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
-  photoBadge: { position: 'absolute', bottom: 2, left: 2, backgroundColor: 'rgba(0,0,0,0.6)', color: '#fff', fontSize: 9, fontWeight: 'bold', paddingHorizontal: 4, borderRadius: 3 },
-  emptyPhotosText: { color: colors.secondary, fontSize: 13, fontStyle: 'italic', textAlign: 'center', marginVertical: 8 },
-  editSamplesRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F1F5F9',
-  },
-  editSamplesText: {
-    color: '#0284c7',
-    fontSize: 16,
-    fontWeight: '500',
-  },
-  batchCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: 14,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F1F5F9',
-  },
-  batchCountTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: colors.onSurface,
-    marginBottom: 2,
-  },
-  batchAnalysisText: {
-    fontSize: 14,
-    color: colors.onSurface,
-    marginBottom: 2,
-  },
-  batchTurnaroundText: {
-    fontSize: 14,
-    color: colors.onSurfaceVariant,
-  },
-  samplesBox: { backgroundColor: '#F1F5F9', borderRadius: 8, padding: 16, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  samplesBoxTitle: { fontSize: 18, fontWeight: 'bold', color: colors.onSurface },
-  samplesBoxSubtitle: { fontSize: 14, color: colors.secondary, marginTop: 2 },
-  signButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: '#E6F8F7', borderWidth: 1, borderColor: colors.primaryContainer, borderRadius: 8, paddingVertical: 12, marginBottom: 12 },
-  signButtonText: { color: colors.primaryContainer, fontWeight: 'bold', fontSize: 15 },
-  signatureImage: { height: 100, width: '100%', resizeMode: 'contain', backgroundColor: '#fff', marginBottom: 12, borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 8 },
-  toggleRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#E2E8F0' },
-  toggleLabel: { fontSize: 16, color: colors.onSurface, flex: 1 },
-  underline: { textDecorationLine: 'underline', textDecorationColor: colors.primaryContainer },
-  actionButtonsRow: { flexDirection: 'row', gap: 16, marginTop: 8 },
+  contactDetailsBox: { backgroundColor: '#F8FAFC', padding: 12, borderRadius: 6, marginBottom: 8, borderWidth: 1, borderColor: '#E2E8F0' },
+  contactCompany: { fontSize: 15, fontWeight: 'bold', color: colors.onSurface, marginBottom: 2 },
+  contactSub: { fontSize: 13, color: colors.secondary },
+  photoActionsRow: { flexDirection: 'row' },
+  photoActionBtn: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F1F5F9', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 6, borderWidth: 1, borderColor: '#CBD5E1' },
+  photoActionText: { marginLeft: 4, fontSize: 12, fontWeight: '600', color: colors.primaryContainer },
+  photoGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 10 },
+  photoThumbWrapper: { width: 80, height: 80, borderRadius: 8, overflow: 'hidden', borderWidth: 1, borderColor: '#CBD5E1', position: 'relative' },
+  photoThumbnail: { width: '100%', height: '100%' },
+  photoDeleteBtn: { position: 'absolute', top: 3, right: 3, backgroundColor: 'rgba(0,0,0,0.65)', width: 20, height: 20, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  photoBadge: { position: 'absolute', bottom: 3, left: 3, backgroundColor: 'rgba(0,0,0,0.65)', color: '#fff', fontSize: 10, fontWeight: 'bold', paddingHorizontal: 4, borderRadius: 4 },
+  emptyPhotosText: { fontSize: 13, color: colors.outline, fontStyle: 'italic', marginTop: 6 },
+  editSamplesRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#F1F5F9' },
+  editSamplesText: { fontSize: 15, fontWeight: '600', color: colors.onSurface },
+  batchCard: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#F8FAFC', padding: 14, borderRadius: 8, marginTop: 12, borderWidth: 1, borderColor: '#E2E8F0' },
+  batchCountTitle: { fontSize: 15, fontWeight: 'bold', color: colors.primaryContainer, marginBottom: 2 },
+  batchAnalysisText: { fontSize: 13, color: colors.onSurface, fontWeight: '500' },
+  batchTurnaroundText: { fontSize: 12, color: colors.secondary, marginTop: 2 },
+  signButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: '#F1F5F9', padding: 12, borderRadius: 8, borderWidth: 1, borderColor: '#CBD5E1', marginBottom: 12 },
+  signButtonText: { color: colors.primaryContainer, fontWeight: '700', fontSize: 14 },
+  signatureImage: { height: 100, width: '100%', backgroundColor: '#fff', marginBottom: 12, borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 8 },
+  toggleRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 8 },
+  toggleLabel: { fontSize: 14, color: colors.onSurface, flex: 1 },
+  underline: { textDecorationLine: 'underline' },
+  infoValue: { fontSize: 14, color: colors.secondary, fontWeight: '500' },
+  actionButtonsRow: { flexDirection: 'row', gap: 12, marginTop: 8 },
   actionButton: { flex: 1, height: 48, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
-  previewButton: { borderWidth: 1, borderColor: colors.primaryContainer },
-  previewButtonText: { color: colors.primaryContainer, fontWeight: 'bold', fontSize: 15 },
-  submitButton: { backgroundColor: colors.primaryContainer, shadowColor: '#000', shadowOffset: {width:0, height:1}, shadowOpacity:0.2, shadowRadius:2, elevation:2 },
-  submitButtonText: { color: '#fff', fontWeight: 'bold', fontSize: 15 },
+  previewButton: { backgroundColor: '#F1F5F9', borderWidth: 1.5, borderColor: colors.primaryContainer },
+  previewButtonText: { color: colors.primaryContainer, fontWeight: '700', fontSize: 15 },
+  submitButton: { backgroundColor: colors.primaryContainer },
+  submitButtonText: { color: '#FFFFFF', fontWeight: '700', fontSize: 15 },
 });

@@ -1,6 +1,7 @@
 import * as Sharing from 'expo-sharing';
 import * as MailComposer from 'expo-mail-composer';
 import * as Print from 'expo-print';
+import * as FileSystem from 'expo-file-system';
 import { Platform } from 'react-native';
 import { CoCData, Project, SampleItem } from '../store/lynkoStore';
 import { lynkoLogoBase64 } from './lynkoLogoBase64';
@@ -15,15 +16,63 @@ const escapeHtml = (unsafe: string) => {
     .replace(/'/g, "&#039;");
 };
 
+/**
+ * Universal helper to convert any image URI (file://, content://, blob, or remote)
+ * to a base64 data URI so expo-print / Web can render it 100% reliably.
+ */
+export const convertUriToBase64 = async (uri: string): Promise<string> => {
+  if (!uri) return '';
+  if (uri.startsWith('data:')) return uri;
+
+  try {
+    if (Platform.OS === 'web') {
+      const response = await fetch(uri);
+      const blob = await response.blob();
+      return new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve(reader.result as string);
+        reader.onerror = () => resolve('');
+        reader.readAsDataURL(blob);
+      });
+    } else {
+      // On mobile native (iOS / Android), read as base64 string
+      const base64 = await FileSystem.readAsStringAsync(uri, {
+        encoding: 'base64',
+      });
+      return `data:image/jpeg;base64,${base64}`;
+    }
+  } catch (err) {
+    console.warn('Could not convert image to base64:', err);
+    return uri;
+  }
+};
+
 export const generatePDF = async (project: Project | null, cocData: CoCData, samples: SampleItem[]) => {
   try {
-    const signatureHtml = cocData.inspectorSignature 
-      ? `<img src="${cocData.inspectorSignature}" style="max-height: 40px; margin-left: 10px;"/>`
-      : '';
-      
-    const relinquishedSigHtml = cocData.relinquishedBySignature 
-      ? `<img src="${cocData.relinquishedBySignature}" style="max-height: 40px; margin-left: 10px;"/>`
-      : '';
+    // 1. Convert signatures to base64 data URIs
+    let signatureHtml = '';
+    if (cocData.inspectorSignature) {
+      const sigData = await convertUriToBase64(cocData.inspectorSignature);
+      signatureHtml = `<img src="${sigData}" style="max-height: 40px; max-width: 160px; margin-left: 10px;"/>`;
+    }
+
+    let relinquishedSigHtml = '';
+    if (cocData.relinquishedBySignature) {
+      const sigData = await convertUriToBase64(cocData.relinquishedBySignature);
+      relinquishedSigHtml = `<img src="${sigData}" style="max-height: 40px; max-width: 160px; margin-left: 10px;"/>`;
+    }
+
+    // 2. Convert all site photos to base64 data URIs
+    const rawPhotos = cocData.photos || [];
+    const base64Photos = await Promise.all(
+      rawPhotos.map(async (p) => {
+        try {
+          return await convertUriToBase64(p);
+        } catch {
+          return '';
+        }
+      })
+    );
 
     const safeCoc = {
       poNumber: escapeHtml(cocData.poNumber),
@@ -43,9 +92,8 @@ export const generatePDF = async (project: Project | null, cocData: CoCData, sam
     const maxSamplesPerPage = 15;
     const totalSamplePages = Math.max(1, Math.ceil(samples.length / maxSamplesPerPage));
     
-    const photos = cocData.photos || [];
     const maxPhotosPerPage = 8;
-    const totalPhotoPages = photos.length > 0 ? Math.ceil(photos.length / maxPhotosPerPage) : 0;
+    const totalPhotoPages = base64Photos.length > 0 ? Math.ceil(base64Photos.length / maxPhotosPerPage) : 0;
     
     const grandTotalPages = totalSamplePages + totalPhotoPages;
 
@@ -99,89 +147,102 @@ export const generatePDF = async (project: Project | null, cocData: CoCData, sam
           <!-- Header Logos -->
           <table style="margin-bottom: -1px;">
             <tr>
-              <td class="bg-beige" style="width: 15%;">Company name</td>
-              <td style="width: 85%; vertical-align: middle; padding: 6px 12px;">
-                <img src="${lynkoLogoBase64}" style="max-height: 46px; display: block;" />
+              <td class="bg-beige" style="width: 15%;">Company Name</td>
+              <td style="width: 45%; vertical-align: middle; padding: 6px 12px;">
+                <img src="${lynkoLogoBase64}" style="max-height: 40px; display: block;" />
+              </td>
+              <td class="bg-teal" style="font-size: 13px;">
+                CHAIN OF CUSTODY
               </td>
             </tr>
           </table>
 
-          <!-- Project & Contact Info -->
+          <!-- Project & Client Info Block -->
           <table style="margin-bottom: -1px;">
             <tr>
-              <td class="bg-beige">Project Name</td>
-              <td style="width: 35%;">${safeCoc.description}</td>
-              <td class="bg-beige">Account Info</td>
-              <td>${safeCoc.accountInfo}</td>
+              <td class="bg-beige" style="width: 15%;">Project Name</td>
+              <td style="width: 45%;">${safeCoc.description}</td>
+              <td class="bg-beige" style="width: 15%;">Turnaround</td>
+              <td style="width: 25%; font-weight: bold; color: #004d40;">${safeCoc.turnaround1}</td>
             </tr>
             <tr>
-              <td class="bg-beige">Project Address</td>
-              <td>${safeCoc.zipCode}</td>
+              <td class="bg-beige">PO #</td>
+              <td>${safeCoc.poNumber}</td>
               <td class="bg-beige">Contact Name</td>
               <td>${safeCoc.contactName}</td>
             </tr>
             <tr>
-              <td class="bg-beige">Project # (PO)</td>
-              <td>${safeCoc.poNumber}</td>
-              <td class="bg-beige">Contact Address</td>
+              <td class="bg-beige">Date</td>
+              <td>${safeCoc.samplingDate}</td>
+              <td class="bg-beige">Address</td>
               <td>${safeCoc.contactAddress}</td>
             </tr>
             <tr>
-              <td class="bg-beige">Sample Date</td>
-              <td>${safeCoc.samplingDate}</td>
-              <td class="bg-beige">Contact Phone</td>
-              <td colspan="2">${safeCoc.contactPhone}</td>
+              <td class="bg-beige">Time</td>
+              <td>${safeCoc.samplingTime}</td>
+              <td class="bg-beige">Phone</td>
+              <td>${safeCoc.contactPhone}</td>
             </tr>
             <tr>
               <td class="bg-beige">Sampled By</td>
               <td>${safeCoc.sampledBy}</td>
-              <td colspan="3"></td>
+              <td class="bg-beige">Account Info</td>
+              <td>${safeCoc.accountInfo}</td>
             </tr>
           </table>
 
-          <!-- Teal Section Header -->
+          <!-- Analysis 2-Tier Header & Sample Rows -->
+          <table style="margin-bottom: -1px;">
+            <thead>
+              <tr>
+                <th style="width: 12%;">Sample ID</th>
+                <th style="width: 38%;">Sample Description</th>
+                <th style="width: 15%;">Type / Media</th>
+                <th style="width: 15%;">Volume / Area</th>
+                <th class="bg-teal" style="width: 10%; font-size: 9px; padding: 2px;">${escapeHtml(cocData.analysis1 || 'Analysis 1')}<br><span style="font-weight: normal; font-size: 8px;">${safeCoc.turnaround1}</span></th>
+                <th class="bg-teal" style="width: 10%; font-size: 9px; padding: 2px;">${escapeHtml(cocData.analysis2 || 'Analysis 2')}<br><span style="font-weight: normal; font-size: 8px;">${safeCoc.turnaround1}</span></th>
+              </tr>
+            </thead>
+            <tbody>
+              ${rowsHtml}
+            </tbody>
+          </table>
+
+          <!-- Special Instructions & Totals -->
+          <table style="margin-bottom: -1px;">
+            <tr>
+              <td class="bg-beige" style="width: 25%;">Special Instructions / Notes:</td>
+              <td style="width: 55%; height: 35px;">${safeCoc.specialInstructions}</td>
+              <td class="bg-beige" style="width: 10%;">Total Samples:</td>
+              <td class="text-center bold" style="width: 10%; font-size: 12px;">${samples.length}</td>
+            </tr>
+          </table>
+
+          <!-- Signatures Footer -->
           <table>
             <tr>
-              <td colspan="6" class="bg-teal">SAMPLES LOG (${safeCoc.turnaround1 ? `Turnaround: ${escapeHtml(safeCoc.turnaround1)}` : 'Standard'})</td>
-            </tr>
-            <tr>
-              <td class="bg-beige text-center" style="width: 10%;">Sample ID</td>
-              <td class="bg-beige text-center" style="width: 40%;">Description & Notes</td>
-              <td class="bg-beige text-center" style="width: 15%;">Property</td>
-              <td class="bg-beige text-center" style="width: 15%;">Measurement</td>
-              <td class="bg-beige text-center" style="width: 10%;">${escapeHtml(cocData.analysis1 || 'Analysis 1')}</td>
-              <td class="bg-beige text-center" style="width: 10%;">${escapeHtml(cocData.analysis2 && cocData.analysis2 !== 'Not set' ? cocData.analysis2 : 'Analysis 2')}</td>
-            </tr>
-            ${rowsHtml}
-          </table>
-
-          <!-- Footer Section -->
-          <table style="margin-top: -1px;">
-            <tr>
-              <td class="bg-beige" style="width: 50%; height: 50px;">
-                Special Instructions:<br>
-                <span style="font-weight: normal;">${safeCoc.specialInstructions}</span>
+              <td class="bg-beige" style="width: 20%;">Relinquished by (Sampler):</td>
+              <td style="width: 30%; height: 38px; vertical-align: middle;">
+                ${relinquishedSigHtml || safeCoc.sampledBy}
               </td>
-              <td style="width: 50%;">
-                Inspector Signature:<br>
-                ${signatureHtml}<br>
-                <div style="text-align: right; margin-top: -15px;">
-                  Time: <u>&nbsp;${safeCoc.samplingTime || '__________'}&nbsp;</u>
-                </div>
+              <td class="bg-beige" style="width: 15%;">Date / Time:</td>
+              <td style="width: 35%; vertical-align: middle;">
+                ${safeCoc.samplingDate} ${safeCoc.samplingTime}
               </td>
             </tr>
             <tr>
-              <td class="bg-beige" style="height: 50px;">
-                Relinquished By Signature:<br>
-                ${relinquishedSigHtml}
+              <td class="bg-beige">Received by (Courier / Lab):</td>
+              <td style="height: 38px; vertical-align: middle;">
+                ${signatureHtml}
               </td>
-              <td style="padding: 6px;">
-                By signing this document, you certify that these samples were not tampered with while under your care.
+              <td class="bg-beige">Date / Time:</td>
+              <td style="vertical-align: middle;">
+                ${safeCoc.samplingDate} ${safeCoc.samplingTime}
               </td>
             </tr>
           </table>
-          
-          <div style="text-align: right; margin-top: 5px; font-size: 10px; font-weight: bold;">
+
+          <div style="text-align: right; margin-top: 6px; font-size: 10px; font-weight: bold;">
             PAGE ${page + 1} of ${grandTotalPages}
           </div>
         </div>
@@ -193,14 +254,14 @@ export const generatePDF = async (project: Project | null, cocData: CoCData, sam
     // ==========================================
     for (let pPage = 0; pPage < totalPhotoPages; pPage++) {
       const pStartIndex = pPage * maxPhotosPerPage;
-      const currentPagePhotos = photos.slice(pStartIndex, pStartIndex + maxPhotosPerPage);
+      const currentPagePhotos = base64Photos.slice(pStartIndex, pStartIndex + maxPhotosPerPage);
       
       let photoGridHtml = '';
       for (let i = 0; i < maxPhotosPerPage; i++) {
         const photoUri = currentPagePhotos[i];
         const photoNum = pStartIndex + i + 1;
         
-        if (photoUri) {
+        if (photoUri && photoUri.length > 50) {
           photoGridHtml += `
             <div class="photo-cell">
               <div class="photo-frame">
@@ -376,6 +437,7 @@ export const generatePDF = async (project: Project | null, cocData: CoCData, sam
       return null;
     }
 
+    // On Native Mobile (iOS / Android): compile PDF with printToFileAsync
     const { uri } = await Print.printToFileAsync({
       html,
       base64: false,
@@ -384,7 +446,9 @@ export const generatePDF = async (project: Project | null, cocData: CoCData, sam
     return uri;
   } catch (error: any) {
     console.error('Error generating PDF:', error);
-    alert('Failed to generate PDF. Error: ' + (error.message || error.toString()));
+    if (Platform.OS === 'web') {
+      alert('Failed to generate PDF: ' + (error.message || error.toString()));
+    }
     return null;
   }
 };

@@ -120,9 +120,21 @@ export default function SubmitCoCScreen({ route, navigation }: any) {
   };
 
   const handleQuickPreview = async () => {
-    const pdfUri = await generatePDF(null, cocData, samples);
-    if (pdfUri) {
-      await Sharing.shareAsync(pdfUri, { UTI: '.pdf', mimeType: 'application/pdf' });
+    try {
+      const pdfUri = await generatePDF(null, cocData, samples);
+      if (pdfUri) {
+        const canShare = await Sharing.isAvailableAsync();
+        if (canShare) {
+          await Sharing.shareAsync(pdfUri, { 
+            UTI: '.pdf', 
+            mimeType: 'application/pdf',
+            dialogTitle: `Chain of Custody - ${cocData.poNumber || 'Preview'}`
+          });
+        }
+      }
+    } catch (err: any) {
+      console.error('Error previewing PDF:', err);
+      Alert.alert('Notice', 'Could not open PDF preview.');
     }
   };
 
