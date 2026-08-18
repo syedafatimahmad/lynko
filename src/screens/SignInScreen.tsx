@@ -20,11 +20,13 @@ import {
   resetPassword, 
   resendVerificationEmail,
   signInWithGoogle, 
-  mapAuthError 
+  mapAuthError,
+  logoutUser
 } from '../services/authService';
 import { useAuthStore } from '../store/authStore';
 import { useLynkoStore } from '../store/lynkoStore';
 import { colors } from '../theme/colors';
+import { auth } from '../config/firebase';
 
 export default function SignInScreen() {
   const [isRegistering, setIsRegistering] = useState(false);
@@ -32,6 +34,7 @@ export default function SignInScreen() {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [checkingVerification, setCheckingVerification] = useState(false);
   const [resending, setResending] = useState(false);
   const [error, setError] = useState('');
   const [infoMessage, setInfoMessage] = useState('');
@@ -77,12 +80,12 @@ export default function SignInScreen() {
 
     try {
       if (isRegistering) {
-        // 1. STRICT REGISTRATION: Create user, send email, and sign out immediately
+        // 1. Create user & dispatch verification email (keeps session active so link token is valid)
         await signUpWithEmail(cleanEmail, password);
         setLoading(false);
         setRegisteredEmailSuccess(cleanEmail);
       } else {
-        // 2. STRICT SIGN IN: Check credentials & enforce email verification
+        // 2. Sign In & check if verified
         const { user, profile } = await signInWithEmail(cleanEmail, password);
         setUser(user);
         setUserData(profile);
@@ -91,7 +94,7 @@ export default function SignInScreen() {
     } catch (err: any) {
       console.error('Auth Error:', err);
       if (err?.message === 'EMAIL_NOT_VERIFIED') {
-        // Immediately navigate to the Verify Email window
+        // Navigate directly to the verification window
         setRegisteredEmailSuccess(cleanEmail);
         setLoading(false);
         return;
@@ -102,6 +105,38 @@ export default function SignInScreen() {
         setQuickActionType(parsed.actionType);
       }
       setLoading(false);
+    }
+  };
+
+  const handleCheckVerification = async () => {
+    setCheckingVerification(true);
+    try {
+      if (auth.currentUser) {
+        await auth.currentUser.reload();
+        if (auth.currentUser.emailVerified) {
+          const user = auth.currentUser;
+          const defaultUserData = {
+            uid: user.uid,
+            email: user.email || '',
+            displayName: user.displayName || user.email?.split('@')[0] || 'Field Inspector',
+            role: 'user',
+          };
+          setUser(user);
+          setUserData(defaultUserData);
+          await syncFromFirestore();
+          return;
+        }
+      }
+
+      Alert.alert(
+        'Email Not Verified Yet',
+        'We have not detected your email verification on Google servers yet.\n\nPlease open your email client, click the activation link, then tap this button again.',
+        [{ text: 'OK' }]
+      );
+    } catch (err: any) {
+      Alert.alert('Notice', 'Please click the link in your email and try again.');
+    } finally {
+      setCheckingVerification(false);
     }
   };
 
@@ -175,7 +210,7 @@ export default function SignInScreen() {
   };
 
   // =========================================================================
-  // VIEW: Dedicated Verification Notice Screen (Strict Gate)
+  // VIEW: Dedicated Verification Screen
   // =========================================================================
   if (registeredEmailSuccess) {
     return (
@@ -189,7 +224,7 @@ export default function SignInScreen() {
             <Text style={styles.verificationTitle}>Verify Your Email</Text>
             
             <Text style={styles.verificationDesc}>
-              Your account has been created. We have dispatched an activation link to:
+              We have dispatched an official activation link to:
             </Text>
             
             <View style={styles.emailBadge}>
@@ -199,22 +234,24 @@ export default function SignInScreen() {
             <View style={styles.noticeBox}>
               <Ionicons name="information-circle-outline" size={20} color={colors.primary} style={{ marginRight: 8, marginTop: 2 }} />
               <Text style={styles.noticeText}>
-                Please check your inbox (and <Text style={{ fontWeight: 'bold' }}>Spam/Junk</Text> folder). You must click the activation link in your email before you can sign in.
+                Please check your inbox (and <Text style={{ fontWeight: 'bold' }}>Spam/Junk</Text> folder). Click the link in the email, then tap the button below.
               </Text>
             </View>
 
+            {/* Main Action: I Have Clicked the Verification Link */}
             <TouchableOpacity 
               style={styles.primaryButton}
-              onPress={() => {
-                setRegisteredEmailSuccess(null);
-                setIsRegistering(false);
-                setError('');
-                setInfoMessage('Account created! Once you click the link in your email, enter your password below to sign in.');
-              }}
+              onPress={handleCheckVerification}
+              disabled={checkingVerification}
             >
-              <Text style={styles.primaryButtonText}>Proceed to Sign In</Text>
+              {checkingVerification ? (
+                <ActivityIndicator color="#FFFFFF" />
+              ) : (
+                <Text style={styles.primaryButtonText}>I've Clicked the Verification Link</Text>
+              )}
             </TouchableOpacity>
 
+            {/* Resend Link Button */}
             <TouchableOpacity 
               style={[styles.resendLinkBtn, { marginTop: 16 }]}
               onPress={handleResendVerification}
@@ -227,14 +264,17 @@ export default function SignInScreen() {
               )}
             </TouchableOpacity>
 
+            {/* Back / Sign Out */}
             <TouchableOpacity 
               style={styles.resendLinkBtn}
-              onPress={() => {
+              onPress={async () => {
+                await logoutUser();
                 setRegisteredEmailSuccess(null);
-                setIsRegistering(true);
+                setIsRegistering(false);
+                setError('');
               }}
             >
-              <Text style={[styles.resendLinkText, { color: colors.secondary, marginTop: 4 }]}>Back to Registration</Text>
+              <Text style={[styles.resendLinkText, { color: colors.secondary, marginTop: 4 }]}>Back to Sign In</Text>
             </TouchableOpacity>
           </View>
         </View>

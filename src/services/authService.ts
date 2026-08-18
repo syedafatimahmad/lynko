@@ -30,7 +30,7 @@ export const mapAuthError = (err: any): { message: string; actionType?: 'switchT
 
   if (err?.message === 'EMAIL_NOT_VERIFIED') {
     return {
-      message: 'Your email address is not verified yet. Please check your email inbox (and spam folder) and click the verification link before signing in.'
+      message: 'Your email address is not verified yet. Please check your email inbox and click the verification link before signing in.'
     };
   }
 
@@ -69,10 +69,10 @@ export const mapAuthError = (err: any): { message: string; actionType?: 'switchT
 };
 
 /**
- * Creates a new user in Firebase Auth, creates Firestore profile,
- * sends verification email link, and IMMEDIATELY signs out to enforce strict verification.
+ * Creates a new user in Firebase Auth, sends verification email link,
+ * and maintains the session token so the verification link remains valid.
  */
-export const signUpWithEmail = async (email: string, pass: string): Promise<{ email: string }> => {
+export const signUpWithEmail = async (email: string, pass: string): Promise<{ email: string; user: FirebaseUser }> => {
   const cleanEmail = email.trim();
   
   // 1. Create user in Firebase Auth
@@ -101,17 +101,12 @@ export const signUpWithEmail = async (email: string, pass: string): Promise<{ em
     console.warn('Firestore initial user creation deferred:', dbErr);
   }
 
-  // 4. STRICT ENFORCEMENT: Sign out immediately so user cannot access dashboard without verifying
-  try {
-    await signOut(auth);
-  } catch (soErr) {}
-
-  return { email: cleanEmail };
+  return { email: cleanEmail, user };
 };
 
 /**
  * Signs in user with email & password, STRICTLY checks emailVerified,
- * blocks access if unverified, and returns verified profile.
+ * and returns verified profile or throws EMAIL_NOT_VERIFIED.
  */
 export const signInWithEmail = async (
   email: string, 
@@ -125,8 +120,6 @@ export const signInWithEmail = async (
   await user.reload();
 
   if (!user.emailVerified) {
-    // STRICT GATE: Block access, log out session, and throw error
-    await signOut(auth);
     throw new Error('EMAIL_NOT_VERIFIED');
   }
 
@@ -157,19 +150,21 @@ export const signInWithEmail = async (
 /**
  * Resends the official verification link email
  */
-export const resendVerificationEmail = async (email: string, pass?: string): Promise<void> => {
-  const cleanEmail = email.trim();
-  if (pass) {
-    try {
-      const cred = await signInWithEmailAndPassword(auth, cleanEmail, pass);
-      await sendEmailVerification(cred.user);
-      await signOut(auth);
-      return;
-    } catch (e) {}
+export const resendVerificationEmail = async (email?: string, pass?: string): Promise<void> => {
+  if (auth.currentUser) {
+    await sendEmailVerification(auth.currentUser);
+    return;
   }
   
-  // Fallback: Send password reset / verification link
-  await sendPasswordResetEmail(auth, cleanEmail);
+  if (email && pass) {
+    const cred = await signInWithEmailAndPassword(auth, email.trim(), pass);
+    await sendEmailVerification(cred.user);
+    return;
+  }
+
+  if (email) {
+    await sendPasswordResetEmail(auth, email.trim());
+  }
 };
 
 /**
