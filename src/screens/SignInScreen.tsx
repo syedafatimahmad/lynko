@@ -141,6 +141,19 @@ export default function SignInScreen() {
       } else {
         // Sign in existing account
         const userCredential = await signInWithEmailAndPassword(auth, cleanEmail, password);
+        
+        // STRICT CHECK: Reload user state to get latest emailVerified from Firebase
+        await userCredential.user.reload();
+        
+        if (!userCredential.user.emailVerified) {
+          // Block access if email is not verified yet
+          await signOut(auth);
+          setRegisteredEmailSuccess(cleanEmail);
+          setLoading(false);
+          return;
+        }
+
+        // Email is verified -> Proceed into app dashboard
         await finishLogin(userCredential.user);
       }
     } catch (err: any) {
