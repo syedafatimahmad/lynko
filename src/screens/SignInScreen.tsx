@@ -20,7 +20,8 @@ import {
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
   sendPasswordResetEmail,
-  sendEmailVerification
+  sendEmailVerification,
+  signOut
 } from 'firebase/auth';
 import { doc, setDoc, getDoc, serverTimestamp } from 'firebase/firestore';
 import { auth, db } from '../config/firebase';
@@ -37,6 +38,7 @@ export default function SignInScreen() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [infoMessage, setInfoMessage] = useState('');
+  const [registeredEmailSuccess, setRegisteredEmailSuccess] = useState<string | null>(null);
   const [quickActionType, setQuickActionType] = useState<'switchToRegister' | 'switchToLogin' | null>(null);
   
   const setUser = useAuthStore((state) => state.setUser);
@@ -58,7 +60,7 @@ export default function SignInScreen() {
         role: 'user',
       };
 
-      // 1. Immediately log in user in Zustand store (triggers root navigation to AppTabs)
+      // 1. Immediately log in user in Zustand store (activates main app dashboard)
       setUser(firebaseUser);
       setUserData(defaultUserData);
 
@@ -88,8 +90,10 @@ export default function SignInScreen() {
   const handleEmailAuth = async () => {
     const cleanEmail = email.trim();
     setQuickActionType(null);
+    setError('');
+    setInfoMessage('');
     
-    // Validation Checks
+    // 1. Validation Checks
     if (!cleanEmail) {
       setError('Please enter your email address.');
       return;
@@ -111,23 +115,25 @@ export default function SignInScreen() {
     }
 
     setLoading(true);
-    setError('');
-    setInfoMessage('');
 
     try {
       if (isRegistering) {
-        // 1. Create Account
+        // STEP A: Create the user account in Firebase Auth
         const userCredential = await createUserWithEmailAndPassword(auth, cleanEmail, password);
         
-        // 2. Send Email Verification Link in background
+        // STEP B: Dispatch official verification link email
         try {
           await sendEmailVerification(userCredential.user);
         } catch (verifErr) {
-          console.warn('Email verification dispatch notice:', verifErr);
+          console.warn('Email verification send warning:', verifErr);
         }
 
-        // 3. Immediately log into app (no blocking or freeze)
-        await finishLogin(userCredential.user);
+        // STEP C: Sign out temporary session so user is NOT auto-logged in without seeing verification
+        await signOut(auth);
+        setLoading(false);
+
+        // STEP D: Transition UI to dedicated Verification Notice screen
+        setRegisteredEmailSuccess(cleanEmail);
       } else {
         // Sign in existing account
         const userCredential = await signInWithEmailAndPassword(auth, cleanEmail, password);
@@ -181,10 +187,10 @@ export default function SignInScreen() {
     try {
       await sendPasswordResetEmail(auth, cleanEmail);
       setLoading(false);
-      setInfoMessage(`Password reset link dispatched to ${cleanEmail}. Please check your inbox.`);
+      setInfoMessage(`Password reset link dispatched to ${cleanEmail}. Please check your inbox and spam folder.`);
       Alert.alert(
         'Password Reset Link Sent',
-        `A password reset link has been dispatched to ${cleanEmail}.\n\nPlease check your email (and spam folder) to set a new password.`,
+        `A password reset link has been dispatched to ${cleanEmail}.\n\nPlease check your inbox (and spam/junk folder) to set your new password.`,
         [{ text: 'OK' }]
       );
     } catch (err: any) {
@@ -240,6 +246,65 @@ export default function SignInScreen() {
     }
   };
 
+  // ==========================================
+  // VIEW: Dedicated Verification Sent Screen
+  // ==========================================
+  if (registeredEmailSuccess) {
+    return (
+      <SafeAreaView style={styles.safeArea}>
+        <View style={styles.verificationContainer}>
+          <View style={styles.verificationCard}>
+            <View style={styles.emailIconCircle}>
+              <Ionicons name="mail-open-outline" size={48} color={colors.primaryContainer} />
+            </View>
+
+            <Text style={styles.verificationTitle}>Verify Your Email</Text>
+            
+            <Text style={styles.verificationDesc}>
+              We have dispatched an official verification link to:
+            </Text>
+            
+            <View style={styles.emailBadge}>
+              <Text style={styles.emailBadgeText}>{registeredEmailSuccess}</Text>
+            </View>
+
+            <View style={styles.noticeBox}>
+              <Ionicons name="information-circle-outline" size={20} color={colors.primary} style={{ marginRight: 8, marginTop: 2 }} />
+              <Text style={styles.noticeText}>
+                Please check your inbox (and <Text style={{ fontWeight: 'bold' }}>Spam/Junk</Text> folder). Click the link in the email to activate your account.
+              </Text>
+            </View>
+
+            <TouchableOpacity 
+              style={styles.primaryButton}
+              onPress={() => {
+                setRegisteredEmailSuccess(null);
+                setIsRegistering(false);
+                setError('');
+                setInfoMessage('Account created! Please sign in with your password.');
+              }}
+            >
+              <Text style={styles.primaryButtonText}>Proceed to Sign In</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity 
+              style={styles.resendLinkBtn}
+              onPress={() => {
+                setRegisteredEmailSuccess(null);
+                setIsRegistering(true);
+              }}
+            >
+              <Text style={styles.resendLinkText}>Back to Registration</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  // ==========================================
+  // VIEW: Main Sign In / Create Account Screen
+  // ==========================================
   return (
     <SafeAreaView style={styles.safeArea}>
       <KeyboardAvoidingView 
@@ -498,21 +563,6 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     textDecorationLine: 'underline',
   },
-  actionChipBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#FFFFFF',
-    borderWidth: 1,
-    borderColor: colors.primaryContainer,
-    borderRadius: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-  },
-  actionChipBtnText: {
-    color: colors.primaryContainer,
-    fontSize: 12,
-    fontWeight: '700',
-  },
   alertBannerSuccess: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -661,5 +711,85 @@ const styles = StyleSheet.create({
   footerNoteText: {
     fontSize: 12,
     color: colors.outline,
+  },
+  // Verification Screen Styles
+  verificationContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    padding: 20,
+  },
+  verificationCard: {
+    backgroundColor: colors.surfaceContainerLowest,
+    padding: 28,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 16,
+    elevation: 4,
+  },
+  emailIconCircle: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: '#E6F8F7',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 18,
+    borderWidth: 1,
+    borderColor: '#b2ebe5',
+  },
+  verificationTitle: {
+    fontSize: 22,
+    fontWeight: 'bold',
+    color: colors.onSurface,
+    marginBottom: 8,
+  },
+  verificationDesc: {
+    fontSize: 14,
+    color: colors.secondary,
+    textAlign: 'center',
+    marginBottom: 10,
+  },
+  emailBadge: {
+    backgroundColor: '#F1F5F9',
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    marginBottom: 18,
+  },
+  emailBadgeText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: colors.primary,
+  },
+  noticeBox: {
+    flexDirection: 'row',
+    backgroundColor: '#E6F8F7',
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 24,
+    borderWidth: 1,
+    borderColor: '#b2ebe5',
+  },
+  noticeText: {
+    flex: 1,
+    fontSize: 13,
+    color: '#004d40',
+    lineHeight: 18,
+  },
+  resendLinkBtn: {
+    marginTop: 14,
+    paddingVertical: 6,
+  },
+  resendLinkText: {
+    fontSize: 13,
+    color: colors.secondary,
+    fontWeight: '600',
   },
 });
