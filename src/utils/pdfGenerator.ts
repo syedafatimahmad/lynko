@@ -1,5 +1,6 @@
 import * as Sharing from 'expo-sharing';
 import * as Print from 'expo-print';
+import * as FileSystem from 'expo-file-system/legacy';
 import { Platform } from 'react-native';
 import { CoCData, Project, SampleItem } from '../store/lynkoStore';
 import { lynkoLogoBase64 } from './lynkoLogoBase64';
@@ -16,35 +17,23 @@ const escapeHtml = (unsafe: string) => {
 
 /**
  * Universal helper to convert any image URI (file://, content://, blob, or remote)
- * to a base64 data URI compliant with Expo SDK 57 modern File System API.
+ * to a base64 data URI so expo-print / Web can render it 100% reliably.
  */
 export const convertUriToBase64 = async (uri: string): Promise<string> => {
   if (!uri) return '';
   if (uri.startsWith('data:')) return uri;
 
   try {
-    // 1. Try modern Expo SDK 57 File API
-    try {
-      const FileSystem = require('expo-file-system');
-      if (FileSystem?.File) {
-        const file = new FileSystem.File(uri);
-        const base64 = await file.base64();
-        if (base64) return `data:image/jpeg;base64,${base64}`;
+    if (Platform.OS !== 'web' && FileSystem && typeof FileSystem.readAsStringAsync === 'function') {
+      const base64 = await FileSystem.readAsStringAsync(uri, {
+        encoding: 'base64',
+      });
+      if (base64) {
+        return `data:image/jpeg;base64,${base64}`;
       }
-    } catch {}
+    }
 
-    // 2. Try expo-file-system/legacy
-    try {
-      const LegacyFS = require('expo-file-system/legacy');
-      if (LegacyFS?.readAsStringAsync) {
-        const base64 = await LegacyFS.readAsStringAsync(uri, {
-          encoding: 'base64',
-        });
-        if (base64) return `data:image/jpeg;base64,${base64}`;
-      }
-    } catch {}
-
-    // 3. Universal Web / React Native fetch reader fallback
+    // Web fallback
     const response = await fetch(uri);
     const blob = await response.blob();
     return new Promise((resolve) => {
@@ -54,6 +43,7 @@ export const convertUriToBase64 = async (uri: string): Promise<string> => {
       reader.readAsDataURL(blob);
     });
   } catch (err) {
+    console.warn('convertUriToBase64 notice:', err);
     return uri;
   }
 };
@@ -454,7 +444,25 @@ export const generatePDF = async (project: Project | null, cocData: CoCData, sam
       base64: false,
     });
 
-    return uri;
+    let finalUri = uri;
+    try {
+      const cleanPo = (cocData.poNumber || 'Draft').replace(/[^a-zA-Z0-9_-]/g, '_');
+      const targetFilename = `ChainOfCustody_${cleanPo}_${Date.now()}.pdf`;
+      const baseDir = FileSystem.cacheDirectory || FileSystem.documentDirectory;
+      
+      if (baseDir && typeof FileSystem.copyAsync === 'function') {
+        const destUri = `${baseDir}${targetFilename}`;
+        await FileSystem.copyAsync({
+          from: uri,
+          to: destUri,
+        });
+        finalUri = destUri;
+      }
+    } catch (copyErr) {
+      finalUri = uri;
+    }
+
+    return finalUri;
   } catch (error: any) {
     console.error('Error generating PDF:', error);
     return null;
