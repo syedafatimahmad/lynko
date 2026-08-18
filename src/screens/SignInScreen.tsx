@@ -37,7 +37,7 @@ export default function SignInScreen() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [infoMessage, setInfoMessage] = useState('');
-  const [showSwitchToLogin, setShowSwitchToLogin] = useState(false);
+  const [quickActionType, setQuickActionType] = useState<'switchToRegister' | 'switchToLogin' | null>(null);
   
   const setUser = useAuthStore((state) => state.setUser);
   const setUserData = useAuthStore((state) => state.setUserData);
@@ -58,11 +58,11 @@ export default function SignInScreen() {
         role: 'user',
       };
 
-      // 1. Set user state so app navigation activates
+      // 1. Immediately log in user in Zustand store (triggers root navigation to AppTabs)
       setUser(firebaseUser);
       setUserData(defaultUserData);
 
-      // 2. Synchronize Firestore document in background without blocking login
+      // 2. Synchronize Firestore user document in background
       try {
         const userDocRef = doc(db, 'users', firebaseUser.uid);
         const docSnap = await getDoc(userDocRef);
@@ -87,7 +87,7 @@ export default function SignInScreen() {
 
   const handleEmailAuth = async () => {
     const cleanEmail = email.trim();
-    setShowSwitchToLogin(false);
+    setQuickActionType(null);
     
     // Validation Checks
     if (!cleanEmail) {
@@ -119,26 +119,15 @@ export default function SignInScreen() {
         // 1. Create Account
         const userCredential = await createUserWithEmailAndPassword(auth, cleanEmail, password);
         
-        // 2. Send Email Verification Link
+        // 2. Send Email Verification Link in background
         try {
           await sendEmailVerification(userCredential.user);
         } catch (verifErr) {
           console.warn('Email verification dispatch notice:', verifErr);
         }
 
-        setLoading(false);
-
-        // 3. User Notification & Proceed
-        Alert.alert(
-          'Account Created & Verification Sent',
-          `A verification link has been dispatched to ${cleanEmail}.\n\nPlease check your inbox (or spam folder) to verify your address.`,
-          [
-            { 
-              text: 'Continue to App', 
-              onPress: () => finishLogin(userCredential.user) 
-            }
-          ]
-        );
+        // 3. Immediately log into app (no blocking or freeze)
+        await finishLogin(userCredential.user);
       } else {
         // Sign in existing account
         const userCredential = await signInWithEmailAndPassword(auth, cleanEmail, password);
@@ -149,39 +138,23 @@ export default function SignInScreen() {
       const code = err.code || '';
 
       if (code === 'auth/email-already-in-use') {
-        setShowSwitchToLogin(true);
-        setError('This email is already registered. Please sign in with your password.');
-        Alert.alert(
-          'Account Already Exists',
-          `An inspector account for "${cleanEmail}" is already registered.`,
-          [
-            { 
-              text: 'Switch to Sign In', 
-              onPress: () => {
-                setIsRegistering(false);
-                setError('');
-                setShowSwitchToLogin(false);
-              } 
-            },
-            {
-              text: 'Reset Password',
-              onPress: () => handleForgotPassword()
-            },
-            { text: 'Cancel', style: 'cancel' }
-          ]
-        );
-      } else if (code === 'auth/user-not-found') {
-        setError('No account found with this email. Tap "Create Account" to register.');
-      } else if (code === 'auth/wrong-password' || code === 'auth/invalid-credential') {
-        setError('Incorrect password or email. If you forgot your password, tap "Forgot Password?" below.');
+        setQuickActionType('switchToLogin');
+        setError('This email is already registered.');
+      } else if (code === 'auth/user-not-found' || code === 'auth/invalid-credential' || code === 'auth/wrong-password') {
+        if (!isRegistering) {
+          setQuickActionType('switchToRegister');
+          setError('Incorrect password or no account exists with this email.');
+        } else {
+          setError('Could not create account. Please check your credentials.');
+        }
       } else if (code === 'auth/invalid-email') {
         setError('Invalid email address format. Please check for typos.');
       } else if (code === 'auth/weak-password') {
         setError('Password is too weak. Please use at least 6 characters.');
       } else if (code === 'auth/too-many-requests') {
-        setError('Too many failed attempts. Please wait a few minutes or reset your password.');
+        setError('Too many failed attempts. Please wait a moment or reset your password.');
       } else if (code === 'auth/network-request-failed') {
-        setError('Network connection error. Please check your Wi-Fi or mobile data.');
+        setError('Network error. Please check your Wi-Fi or mobile data.');
       } else {
         setError(err.message || 'Authentication failed. Please check your credentials.');
       }
@@ -192,7 +165,7 @@ export default function SignInScreen() {
   const handleForgotPassword = async () => {
     const cleanEmail = email.trim();
     if (!cleanEmail) {
-      setError('Please type your email address in the box above, then tap "Forgot Password?".');
+      setError('Please enter your email address in the box above to receive a password reset link.');
       return;
     }
 
@@ -208,10 +181,10 @@ export default function SignInScreen() {
     try {
       await sendPasswordResetEmail(auth, cleanEmail);
       setLoading(false);
-      setInfoMessage(`Password reset link sent to ${cleanEmail}. Please check your inbox.`);
+      setInfoMessage(`Password reset link dispatched to ${cleanEmail}. Please check your inbox.`);
       Alert.alert(
         'Password Reset Link Sent',
-        `A password reset link has been dispatched to ${cleanEmail}.\n\nPlease check your email (and spam folder) to set your new password.`,
+        `A password reset link has been dispatched to ${cleanEmail}.\n\nPlease check your email (and spam folder) to set a new password.`,
         [{ text: 'OK' }]
       );
     } catch (err: any) {
@@ -229,6 +202,7 @@ export default function SignInScreen() {
     setLoading(true);
     setError('');
     setInfoMessage('');
+    setQuickActionType(null);
 
     try {
       const provider = new GoogleAuthProvider();
@@ -287,23 +261,50 @@ export default function SignInScreen() {
               </Text>
             </View>
 
-            {/* Error Banner */}
+            {/* Error Banner with Smart Quick Actions */}
             {error ? (
               <View style={styles.alertBannerError}>
-                <Ionicons name="alert-circle" size={20} color={colors.error} style={{ marginRight: 8 }} />
+                <Ionicons name="alert-circle" size={20} color={colors.error} style={{ marginRight: 8, marginTop: 1 }} />
                 <View style={{ flex: 1 }}>
                   <Text style={styles.alertTextError}>{error}</Text>
-                  {showSwitchToLogin && (
+                  
+                  {/* Shortcut 1: Switch to Login if duplicate email */}
+                  {quickActionType === 'switchToLogin' && (
                     <TouchableOpacity 
                       style={styles.switchAlertBtn} 
                       onPress={() => {
                         setIsRegistering(false);
                         setError('');
-                        setShowSwitchToLogin(false);
+                        setQuickActionType(null);
                       }}
                     >
-                      <Text style={styles.switchAlertBtnText}>👉 Tap here to Sign In now</Text>
+                      <Text style={styles.switchAlertBtnText}>👉 Click here to Sign In with this email</Text>
                     </TouchableOpacity>
+                  )}
+
+                  {/* Shortcut 2: Switch to Register if account not found */}
+                  {quickActionType === 'switchToRegister' && (
+                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 8 }}>
+                      <TouchableOpacity 
+                        style={styles.actionChipBtn} 
+                        onPress={() => {
+                          setIsRegistering(true);
+                          setError('');
+                          setQuickActionType(null);
+                        }}
+                      >
+                        <Ionicons name="person-add-outline" size={14} color={colors.primaryContainer} style={{ marginRight: 4 }} />
+                        <Text style={styles.actionChipBtnText}>Create Account</Text>
+                      </TouchableOpacity>
+
+                      <TouchableOpacity 
+                        style={styles.actionChipBtn} 
+                        onPress={handleForgotPassword}
+                      >
+                        <Ionicons name="key-outline" size={14} color={colors.primaryContainer} style={{ marginRight: 4 }} />
+                        <Text style={styles.actionChipBtnText}>Reset Password</Text>
+                      </TouchableOpacity>
+                    </View>
                   )}
                 </View>
               </View>
@@ -325,7 +326,7 @@ export default function SignInScreen() {
                   setIsRegistering(false); 
                   setError(''); 
                   setInfoMessage(''); 
-                  setShowSwitchToLogin(false);
+                  setQuickActionType(null);
                 }}
               >
                 <Text style={[styles.tabBtnText, !isRegistering && styles.tabBtnTextActive]}>Sign In</Text>
@@ -336,7 +337,7 @@ export default function SignInScreen() {
                   setIsRegistering(true); 
                   setError(''); 
                   setInfoMessage(''); 
-                  setShowSwitchToLogin(false);
+                  setQuickActionType(null);
                 }}
               >
                 <Text style={[styles.tabBtnText, isRegistering && styles.tabBtnTextActive]}>Create Account</Text>
@@ -354,7 +355,7 @@ export default function SignInScreen() {
                   onChangeText={(val) => { 
                     setEmail(val); 
                     if (error) setError(''); 
-                    if (showSwitchToLogin) setShowSwitchToLogin(false);
+                    if (quickActionType) setQuickActionType(null);
                   }}
                   placeholder="e.g. inspector@alphaenvironmental.us"
                   placeholderTextColor="#94A3B8"
@@ -495,18 +496,33 @@ const styles = StyleSheet.create({
   alertTextError: {
     color: colors.error,
     fontSize: 13,
-    fontWeight: '500',
+    fontWeight: '600',
     lineHeight: 18,
   },
   switchAlertBtn: {
     marginTop: 6,
-    paddingVertical: 4,
+    paddingVertical: 2,
   },
   switchAlertBtnText: {
     color: colors.primaryContainer,
     fontSize: 13,
     fontWeight: '700',
     textDecorationLine: 'underline',
+  },
+  actionChipBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: colors.primaryContainer,
+    borderRadius: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+  },
+  actionChipBtnText: {
+    color: colors.primaryContainer,
+    fontSize: 12,
+    fontWeight: '700',
   },
   alertBannerSuccess: {
     flexDirection: 'row',
