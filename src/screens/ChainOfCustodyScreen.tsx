@@ -19,7 +19,6 @@ import { colors } from '../theme/colors';
 import { generatePDF } from '../utils/pdfGenerator';
 import SignatureModal from '../components/SignatureModal';
 import { Ionicons } from '@expo/vector-icons';
-import * as Sharing from 'expo-sharing';
 import * as Print from 'expo-print';
 import { formatPhoneNumber, formatZipCode, formatPONumber } from '../utils/formatters';
 
@@ -89,17 +88,9 @@ export default function ChainOfCustodyScreen({ navigation }: any) {
     setPreviewing(true);
     try {
       const uri = await generatePDF(null, cocData, samples);
-      if (uri) {
-        const canShare = await Sharing.isAvailableAsync();
-        if (canShare) {
-          await Sharing.shareAsync(uri, { 
-            UTI: '.pdf', 
-            mimeType: 'application/pdf',
-            dialogTitle: `Chain of Custody - ${cocData.poNumber || 'Preview'}`
-          });
-        } else {
-          await Print.printAsync({ uri });
-        }
+      if (uri && Platform.OS !== 'web') {
+        // Native Mobile: Open full-screen native Android/iOS PDF Previewer & Spooler directly
+        await Print.printAsync({ uri });
       }
     } catch (err: any) {
       console.error('Error previewing PDF:', err);
@@ -127,7 +118,6 @@ export default function ChainOfCustodyScreen({ navigation }: any) {
       return;
     }
     
-    // Validation passed -> Navigate to dedicated Submit CoC email screen
     navigation.navigate('SubmitCoC');
   };
 
@@ -298,7 +288,7 @@ export default function ChainOfCustodyScreen({ navigation }: any) {
             <Ionicons name="chevron-forward" size={18} color="#94A3B8" />
           </TouchableOpacity>
 
-          {/* Batch Card (Screenshot 1: 4 Bulk sample / Asbestos PLM / Next-day rush) */}
+          {/* Batch Card */}
           <TouchableOpacity 
             style={styles.batchCard} 
             onPress={() => navigation.navigate('EditSamples')}

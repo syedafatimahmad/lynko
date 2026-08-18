@@ -13,7 +13,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLynkoStore, SubmissionRecord } from '../store/lynkoStore';
 import { colors } from '../theme/colors';
 import { generatePDF } from '../utils/pdfGenerator';
-import * as Sharing from 'expo-sharing';
+import * as Print from 'expo-print';
 import { Ionicons } from '@expo/vector-icons';
 
 export default function SubmittedCoCScreen({ navigation }: any) {
@@ -44,18 +44,10 @@ export default function SubmittedCoCScreen({ navigation }: any) {
     try {
       const pdfUri = await generatePDF(null, cocData, samples);
       if (pdfUri) {
-        if (await Sharing.isAvailableAsync()) {
-          await Sharing.shareAsync(pdfUri, {
-            mimeType: 'application/pdf',
-            dialogTitle: `Chain of Custody - ${sub.poNumber || 'Submitted'}`,
-            UTI: 'com.adobe.pdf',
-          });
-        } else {
-          await Share.share({ url: pdfUri, title: `CoC ${sub.poNumber}` });
-        }
+        await Print.printAsync({ uri: pdfUri });
       }
     } catch (e: any) {
-      Alert.alert('Error', 'Could not open PDF document.');
+      Alert.alert('Notice', 'Could not open PDF viewer on this device.');
     }
   };
 

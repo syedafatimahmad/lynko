@@ -8,11 +8,13 @@ import {
   ScrollView,
   ActivityIndicator,
   Alert,
+  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as MailComposer from 'expo-mail-composer';
 import * as Sharing from 'expo-sharing';
+import * as Print from 'expo-print';
 import { useAuthStore } from '../store/authStore';
 import { useLynkoStore, SubmissionRecord } from '../store/lynkoStore';
 import { colors } from '../theme/colors';
@@ -60,21 +62,23 @@ export default function SubmitCoCScreen({ route, navigation }: any) {
         return;
       }
 
-      // 1. Dispatch Email via MailComposer or native Share
+      // 1. Dispatch Email via MailComposer with PDF and all attached site photos
+      const photoAttachments = (cocData.photos || []).filter(p => !!p);
+      const allAttachments = [pdfUri, ...photoAttachments];
+
       const isAvailable = await MailComposer.isAvailableAsync();
       if (isAvailable) {
         await MailComposer.composeAsync({
           recipients: [cleanTo],
           subject: subject,
           body: message,
-          attachments: [pdfUri],
+          attachments: allAttachments,
         });
+      } else if (Platform.OS === 'web') {
+        const mailto = `mailto:${cleanTo}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(message)}`;
+        window.open(mailto, '_blank');
       } else {
-        await Sharing.shareAsync(pdfUri, {
-          mimeType: 'application/pdf',
-          dialogTitle: subject,
-          UTI: '.pdf',
-        });
+        await Print.printAsync({ uri: pdfUri });
       }
 
       // 2. Record Verified Submission into Store & Firestore Archive
@@ -122,15 +126,8 @@ export default function SubmitCoCScreen({ route, navigation }: any) {
   const handleQuickPreview = async () => {
     try {
       const pdfUri = await generatePDF(null, cocData, samples);
-      if (pdfUri) {
-        const canShare = await Sharing.isAvailableAsync();
-        if (canShare) {
-          await Sharing.shareAsync(pdfUri, { 
-            UTI: '.pdf', 
-            mimeType: 'application/pdf',
-            dialogTitle: `Chain of Custody - ${cocData.poNumber || 'Preview'}`
-          });
-        }
+      if (pdfUri && Platform.OS !== 'web') {
+        await Print.printAsync({ uri: pdfUri });
       }
     } catch (err: any) {
       console.error('Error previewing PDF:', err);
