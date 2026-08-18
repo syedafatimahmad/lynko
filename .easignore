@@ -1,0 +1,15 @@
+# Dependencies and build artifacts
+node_modules/
+.expo/
+dist/
+web-build/
+
+# Environment files
+.env*
+!.env.example
+
+# Documentation, markdown and IDE files
+*.md
+.git/
+.vscode/
+.idea/
