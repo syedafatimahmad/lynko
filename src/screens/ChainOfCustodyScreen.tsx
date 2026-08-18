@@ -31,11 +31,23 @@ export default function ChainOfCustodyScreen({ navigation }: any) {
   const [tosAgreed, setTosAgreed] = useState(false);
   const [isEditingContacts, setIsEditingContacts] = useState(false);
   const [previewing, setPreviewing] = useState(false);
+  const [errors, setErrors] = useState<{ [key: string]: string }>({});
 
   const photos = cocData.photos || [];
 
+  const clearError = (field: string) => {
+    if (errors[field]) {
+      setErrors((prev) => {
+        const next = { ...prev };
+        delete next[field];
+        return next;
+      });
+    }
+  };
+
   const handleSaveSignature = (sig: string) => {
     updateCoCData({ inspectorSignature: sig });
+    clearError('signature');
     setShowSignature(false);
   };
 
@@ -89,7 +101,6 @@ export default function ChainOfCustodyScreen({ navigation }: any) {
     try {
       const uri = await generatePDF(null, cocData, samples);
       if (uri && Platform.OS !== 'web') {
-        // Native Mobile: Open full-screen native Android/iOS PDF Previewer & Spooler directly
         await Print.printAsync({ uri });
       }
     } catch (err: any) {
@@ -101,23 +112,38 @@ export default function ChainOfCustodyScreen({ navigation }: any) {
   };
 
   const handleSubmit = () => {
-    if (!cocData.poNumber || !cocData.description || !cocData.zipCode) {
-      Alert.alert('Missing Information', 'Please provide PO number, Description, and Zipcode.');
-      return;
+    const newErrors: { [key: string]: string } = {};
+
+    if (!cocData.poNumber?.trim()) {
+      newErrors.poNumber = 'PO Number is required';
     }
-    if (!cocData.sampledBy) {
-      Alert.alert('Missing Information', 'Please provide the Contact (Sampled by).');
-      return;
+    if (!cocData.description?.trim()) {
+      newErrors.description = 'Project Description is required';
+    }
+    if (!cocData.zipCode?.trim()) {
+      newErrors.zipCode = 'Zip Code is required';
+    }
+    if (!cocData.sampledBy?.trim()) {
+      newErrors.sampledBy = 'Sampled By (Inspector Name) is required';
     }
     if (samples.length === 0) {
-      Alert.alert('Missing Information', 'Please add at least one sample in the Edit Samples screen.');
-      return;
+      newErrors.samples = 'At least 1 sample is required before submitting.';
     }
     if (!cocData.inspectorSignature) {
-      Alert.alert('Missing Information', 'Please provide a Courier Signature before submitting.');
+      newErrors.signature = 'Courier signature is required before submitting.';
+    }
+
+    if (Object.keys(newErrors).length > 0) {
+      setErrors(newErrors);
+      Alert.alert(
+        'Incomplete Chain of Custody',
+        'Please complete the highlighted required fields before submitting.',
+        [{ text: 'OK' }]
+      );
       return;
     }
-    
+
+    setErrors({});
     navigation.navigate('SubmitCoC');
   };
 
@@ -132,6 +158,16 @@ export default function ChainOfCustodyScreen({ navigation }: any) {
       </View>
 
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+        {/* Top Validation Warning Banner */}
+        {Object.keys(errors).length > 0 && (
+          <View style={styles.topErrorBanner}>
+            <Ionicons name="alert-circle" size={22} color={colors.error} style={{ marginRight: 8 }} />
+            <Text style={styles.topErrorBannerText}>
+              Please fill in the {Object.keys(errors).length} highlighted required fields below to submit.
+            </Text>
+          </View>
+        )}
+
         <Text style={styles.projectContext}>Project: {cocData.description || 'Alpha Environmental Site'}</Text>
 
         {/* Card 1: Project Information */}
@@ -140,39 +176,72 @@ export default function ChainOfCustodyScreen({ navigation }: any) {
           <Text style={styles.cardSubtitle}>Alpha Environmental Field Operations</Text>
 
           <View style={styles.inputGroup}>
-            <Text style={styles.label}>PO NUMBER</Text>
+            <Text style={styles.label}>
+              PO NUMBER <Text style={styles.requiredAsterisk}>*</Text>
+            </Text>
             <TextInput
-              style={styles.input}
+              style={[styles.input, errors.poNumber ? styles.inputError : null]}
               value={cocData.poNumber}
-              onChangeText={(text) => updateCoCData({ poNumber: formatPONumber(text) })}
+              onChangeText={(text) => {
+                clearError('poNumber');
+                updateCoCData({ poNumber: formatPONumber(text) });
+              }}
               placeholder="e.g. 47674"
               placeholderTextColor="#94A3B8"
               keyboardType="number-pad"
             />
+            {errors.poNumber && (
+              <View style={styles.errorRow}>
+                <Ionicons name="alert-circle" size={13} color={colors.error} style={{ marginRight: 4 }} />
+                <Text style={styles.errorText}>{errors.poNumber}</Text>
+              </View>
+            )}
           </View>
 
           <View style={styles.inputGroup}>
-            <Text style={styles.label}>DESCRIPTION</Text>
+            <Text style={styles.label}>
+              DESCRIPTION <Text style={styles.requiredAsterisk}>*</Text>
+            </Text>
             <TextInput
-              style={styles.input}
+              style={[styles.input, errors.description ? styles.inputError : null]}
               value={cocData.description}
-              onChangeText={(text) => updateCoCData({ description: text })}
+              onChangeText={(text) => {
+                clearError('description');
+                updateCoCData({ description: text });
+              }}
               placeholder="e.g. Commercial Asbestos & Lead Inspection"
               placeholderTextColor="#94A3B8"
             />
+            {errors.description && (
+              <View style={styles.errorRow}>
+                <Ionicons name="alert-circle" size={13} color={colors.error} style={{ marginRight: 4 }} />
+                <Text style={styles.errorText}>{errors.description}</Text>
+              </View>
+            )}
           </View>
 
           <View style={styles.inputGroup}>
-            <Text style={styles.label}>ZIP CODE</Text>
+            <Text style={styles.label}>
+              ZIP CODE <Text style={styles.requiredAsterisk}>*</Text>
+            </Text>
             <TextInput
-              style={styles.input}
+              style={[styles.input, errors.zipCode ? styles.inputError : null]}
               value={cocData.zipCode}
-              onChangeText={(text) => updateCoCData({ zipCode: formatZipCode(text) })}
+              onChangeText={(text) => {
+                clearError('zipCode');
+                updateCoCData({ zipCode: formatZipCode(text) });
+              }}
               placeholder="e.g. 92101"
               placeholderTextColor="#94A3B8"
               keyboardType="number-pad"
               maxLength={5}
             />
+            {errors.zipCode && (
+              <View style={styles.errorRow}>
+                <Ionicons name="alert-circle" size={13} color={colors.error} style={{ marginRight: 4 }} />
+                <Text style={styles.errorText}>{errors.zipCode}</Text>
+              </View>
+            )}
           </View>
         </View>
 
@@ -228,14 +297,25 @@ export default function ChainOfCustodyScreen({ navigation }: any) {
           )}
 
           <View style={[styles.inputGroup, { marginTop: 8 }]}>
-            <Text style={styles.label}>SAMPLED BY (INSPECTOR NAME)</Text>
+            <Text style={styles.label}>
+              SAMPLED BY (INSPECTOR NAME) <Text style={styles.requiredAsterisk}>*</Text>
+            </Text>
             <TextInput
-              style={styles.input}
+              style={[styles.input, errors.sampledBy ? styles.inputError : null]}
               value={cocData.sampledBy}
-              onChangeText={(text) => updateCoCData({ sampledBy: text })}
+              onChangeText={(text) => {
+                clearError('sampledBy');
+                updateCoCData({ sampledBy: text });
+              }}
               placeholder="e.g. Ali Saleh"
               placeholderTextColor="#94A3B8"
             />
+            {errors.sampledBy && (
+              <View style={styles.errorRow}>
+                <Ionicons name="alert-circle" size={13} color={colors.error} style={{ marginRight: 4 }} />
+                <Text style={styles.errorText}>{errors.sampledBy}</Text>
+              </View>
+            )}
           </View>
         </View>
 
@@ -276,13 +356,25 @@ export default function ChainOfCustodyScreen({ navigation }: any) {
         </View>
 
         {/* Card 4: Samples */}
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>Samples</Text>
+        <View style={[styles.card, errors.samples ? styles.cardError : null]}>
+          <View style={styles.cardHeaderRow}>
+            <Text style={styles.cardTitle}>
+              Samples ({samples.length}) <Text style={styles.requiredAsterisk}>*</Text>
+            </Text>
+            {errors.samples && (
+              <View style={styles.badgeError}>
+                <Text style={styles.badgeErrorText}>Required</Text>
+              </View>
+            )}
+          </View>
 
           {/* Top trigger: Edit Samples > (Opens SampleTypes) */}
           <TouchableOpacity 
             style={styles.editSamplesRow} 
-            onPress={() => navigation.navigate('SampleTypes')}
+            onPress={() => {
+              clearError('samples');
+              navigation.navigate('SampleTypes');
+            }}
           >
             <Text style={styles.editSamplesText}>Edit Samples</Text>
             <Ionicons name="chevron-forward" size={18} color="#94A3B8" />
@@ -290,8 +382,11 @@ export default function ChainOfCustodyScreen({ navigation }: any) {
 
           {/* Batch Card */}
           <TouchableOpacity 
-            style={styles.batchCard} 
-            onPress={() => navigation.navigate('EditSamples')}
+            style={[styles.batchCard, errors.samples ? styles.batchCardError : null]} 
+            onPress={() => {
+              clearError('samples');
+              navigation.navigate('EditSamples');
+            }}
           >
             <View style={{ flex: 1 }}>
               <Text style={styles.batchCountTitle}>{samples.length} Bulk sample</Text>
@@ -300,18 +395,39 @@ export default function ChainOfCustodyScreen({ navigation }: any) {
             </View>
             <Ionicons name="chevron-forward" size={20} color="#94A3B8" />
           </TouchableOpacity>
+
+          {errors.samples && (
+            <View style={[styles.errorRow, { marginTop: 8 }]}>
+              <Ionicons name="alert-circle" size={14} color={colors.error} style={{ marginRight: 4 }} />
+              <Text style={styles.errorText}>{errors.samples}</Text>
+            </View>
+          )}
         </View>
 
         {/* Card 5: Review & Submit */}
         <View style={styles.card}>
           <Text style={styles.cardTitle}>Review and Submit</Text>
           
-          <TouchableOpacity style={styles.signButton} onPress={() => setShowSignature(true)}>
-            <Ionicons name="pencil" size={20} color={colors.primaryContainer} style={{marginRight: 8}} />
-            <Text style={styles.signButtonText}>
-              {cocData.inspectorSignature ? 'Edit Courier Signature' : 'Add Courier Signature'}
+          <TouchableOpacity 
+            style={[styles.signButton, errors.signature ? styles.signButtonError : null]} 
+            onPress={() => {
+              clearError('signature');
+              setShowSignature(true);
+            }}
+          >
+            <Ionicons name="pencil" size={20} color={errors.signature ? colors.error : colors.primaryContainer} style={{marginRight: 8}} />
+            <Text style={[styles.signButtonText, errors.signature ? { color: colors.error } : null]}>
+              {cocData.inspectorSignature ? 'Edit Courier Signature' : 'Add Courier Signature *'}
             </Text>
           </TouchableOpacity>
+
+          {errors.signature && (
+            <View style={[styles.errorRow, { marginTop: -6, marginBottom: 10 }]}>
+              <Ionicons name="alert-circle" size={13} color={colors.error} style={{ marginRight: 4 }} />
+              <Text style={styles.errorText}>{errors.signature}</Text>
+            </View>
+          )}
+
           {cocData.inspectorSignature && (
             <Image source={{ uri: cocData.inspectorSignature }} style={styles.signatureImage} resizeMode="contain" />
           )}
@@ -371,14 +487,68 @@ const styles = StyleSheet.create({
   headerTitle: { fontSize: 22, fontWeight: 'bold', color: colors.onSurface },
   scrollContent: { padding: 16, paddingBottom: 100 },
   projectContext: { fontSize: 14, color: colors.secondary, fontWeight: '500', marginBottom: 12 },
+  topErrorBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FEF2F2',
+    borderWidth: 1,
+    borderColor: '#FCA5A5',
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 14,
+  },
+  topErrorBannerText: {
+    flex: 1,
+    color: colors.error,
+    fontSize: 13,
+    fontWeight: '700',
+    lineHeight: 18,
+  },
+  requiredAsterisk: {
+    color: colors.error,
+    fontWeight: 'bold',
+  },
   card: { backgroundColor: colors.surfaceContainerLowest, borderRadius: 8, padding: 16, marginBottom: 16, borderWidth: 1, borderColor: '#E2E8F0', shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.05, shadowRadius: 12, elevation: 2 },
+  cardError: {
+    borderColor: '#FCA5A5',
+    borderWidth: 1.5,
+    backgroundColor: '#FFFBFB',
+  },
   cardTitle: { fontSize: 18, fontWeight: 'bold', color: colors.onSurface, borderBottomWidth: 1, borderBottomColor: '#E2E8F0', paddingBottom: 8, marginBottom: 4 },
   cardSubtitle: { fontSize: 13, color: colors.secondary, marginBottom: 12 },
   cardHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderBottomWidth: 1, borderBottomColor: '#E2E8F0', paddingBottom: 8, marginBottom: 12 },
   linkText: { color: colors.primaryContainer, fontWeight: '600', fontSize: 14 },
   inputGroup: { marginBottom: 12 },
   label: { fontSize: 13, fontWeight: '600', color: colors.secondary, marginBottom: 4 },
-  input: { borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 4, paddingHorizontal: 12, paddingVertical: 10, fontSize: 15, color: colors.onSurface },
+  input: { borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 4, paddingHorizontal: 12, paddingVertical: 10, fontSize: 15, color: colors.onSurface, backgroundColor: '#FFFFFF' },
+  inputError: {
+    borderColor: colors.error,
+    borderWidth: 1.5,
+    backgroundColor: '#FEF2F2',
+  },
+  errorRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 4,
+  },
+  errorText: {
+    color: colors.error,
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  badgeError: {
+    backgroundColor: '#FEE2E2',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 4,
+    borderWidth: 1,
+    borderColor: '#FCA5A5',
+  },
+  badgeErrorText: {
+    color: colors.error,
+    fontSize: 11,
+    fontWeight: '700',
+  },
   row: { flexDirection: 'row' },
   contactDetailsBox: { backgroundColor: '#F8FAFC', padding: 12, borderRadius: 6, marginBottom: 8, borderWidth: 1, borderColor: '#E2E8F0' },
   contactCompany: { fontSize: 15, fontWeight: 'bold', color: colors.onSurface, marginBottom: 2 },
@@ -395,10 +565,20 @@ const styles = StyleSheet.create({
   editSamplesRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#F1F5F9' },
   editSamplesText: { fontSize: 15, fontWeight: '600', color: colors.onSurface },
   batchCard: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#F8FAFC', padding: 14, borderRadius: 8, marginTop: 12, borderWidth: 1, borderColor: '#E2E8F0' },
+  batchCardError: {
+    borderColor: '#FCA5A5',
+    backgroundColor: '#FEF2F2',
+    borderWidth: 1.5,
+  },
   batchCountTitle: { fontSize: 15, fontWeight: 'bold', color: colors.primaryContainer, marginBottom: 2 },
   batchAnalysisText: { fontSize: 13, color: colors.onSurface, fontWeight: '500' },
   batchTurnaroundText: { fontSize: 12, color: colors.secondary, marginTop: 2 },
   signButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: '#F1F5F9', padding: 12, borderRadius: 8, borderWidth: 1, borderColor: '#CBD5E1', marginBottom: 12 },
+  signButtonError: {
+    backgroundColor: '#FEF2F2',
+    borderColor: colors.error,
+    borderWidth: 1.5,
+  },
   signButtonText: { color: colors.primaryContainer, fontWeight: '700', fontSize: 14 },
   signatureImage: { height: 100, width: '100%', backgroundColor: '#fff', marginBottom: 12, borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 8 },
   toggleRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 8 },
