@@ -1,4 +1,3 @@
-import React, { useState } from 'react';
 import { 
   View, 
   Text, 
@@ -7,11 +6,13 @@ import {
   StyleSheet, 
   ActivityIndicator, 
   Image, 
-  ScrollView,
-  KeyboardAvoidingView,
-  Platform,
-  Alert
+  ScrollView, 
+  KeyboardAvoidingView, 
+  Platform, 
+  Alert,
+  AppState 
 } from 'react-native';
+import React, { useState, useEffect } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { 
@@ -43,6 +44,43 @@ export default function SignInScreen() {
   const setUser = useAuthStore((state) => state.setUser);
   const setUserData = useAuthStore((state) => state.setUserData);
   const syncFromFirestore = useLynkoStore((state) => state.syncFromFirestore);
+
+  // Auto-detect email verification when app comes to foreground or every 3 seconds
+  useEffect(() => {
+    if (!registeredEmail) return;
+
+    const checkStatus = async () => {
+      try {
+        if (auth.currentUser) {
+          await auth.currentUser.reload();
+          if (auth.currentUser.emailVerified) {
+            const user = auth.currentUser;
+            setUser(user);
+            setUserData({
+              uid: user.uid,
+              email: user.email || '',
+              displayName: user.displayName || user.email?.split('@')[0] || 'Field Inspector',
+              role: 'user',
+            });
+            await syncFromFirestore();
+          }
+        }
+      } catch (e) {}
+    };
+
+    const interval = setInterval(checkStatus, 3000);
+
+    const subscription = AppState.addEventListener('change', (nextState) => {
+      if (nextState === 'active') {
+        checkStatus();
+      }
+    });
+
+    return () => {
+      clearInterval(interval);
+      subscription.remove();
+    };
+  }, [registeredEmail]);
 
   const validateEmail = (val: string) => {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
