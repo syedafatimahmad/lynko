@@ -2,6 +2,7 @@
   "expo": {
     "name": "Lynko",
     "slug": "lynko",
+    "scheme": "lynko",
     "version": "1.0.0",
     "orientation": "portrait",
     "jsEngine": "hermes",

@@ -217,12 +217,7 @@ export const signInWithGoogle = async (): Promise<{ user: FirebaseUser; profile:
       const userCredential = await signInWithPopup(auth, provider);
       user = userCredential.user;
     } catch (popupErr: any) {
-      if (popupErr.code === 'auth/popup-blocked') {
-        await signInWithRedirect(auth, provider);
-        throw new Error('Redirecting to Google sign in...');
-      } else {
-        throw new Error('Google Sign-In is optimized for Web and Native App builds. On mobile Expo Go, please use Email and Password.');
-      }
+      throw new Error('Google Sign-In on Android requires configuring Google OAuth in the Firebase Console. You can sign in immediately using your Email and Password above.');
     }
   }
 
