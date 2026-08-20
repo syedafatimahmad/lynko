@@ -230,23 +230,19 @@ export default function SubmitCoCScreen({ route, navigation }: any) {
           style={[styles.sendButton, sending && styles.sendButtonDisabled]}
           onPress={handleSend}
           disabled={sending}
+          activeOpacity={0.8}
         >
           {sending ? (
-            <ActivityIndicator color="#ffffff" />
+            <View style={styles.sendButtonContent}>
+              <ActivityIndicator color="#ffffff" style={{ marginRight: 8 }} />
+              <Text style={styles.sendButtonText}>Preparing PDF & Opening Email...</Text>
+            </View>
           ) : (
             <View style={styles.sendButtonContent}>
               <Ionicons name="send" size={18} color="#ffffff" style={{ marginRight: 8 }} />
-              <Text style={styles.sendButtonText}>Send Chain of Custody</Text>
+              <Text style={styles.sendButtonText}>Send Chain of Custody (Email PDF)</Text>
             </View>
           )}
-        </TouchableOpacity>
-
-        <TouchableOpacity 
-          style={styles.viewHistoryLink} 
-          onPress={() => navigation.navigate('SubmittedCoC')}
-        >
-          <Ionicons name="time-outline" size={16} color={colors.primaryContainer} style={{ marginRight: 6 }} />
-          <Text style={styles.viewHistoryLinkText}>View Past Submitted CoCs</Text>
         </TouchableOpacity>
       </ScrollView>
     </SafeAreaView>
