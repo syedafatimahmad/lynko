@@ -75,19 +75,25 @@ export default function ProjectsScreen({ navigation }: any) {
           ) : null}
         </View>
 
-        {/* Filter Chips */}
+        {/* Filter Chips with Real-Time Counts */}
         <View style={styles.filterRow}>
-          {(['All', 'Draft', 'Dispatched', 'Completed'] as const).map(tab => (
-            <TouchableOpacity
-              key={tab}
-              style={[styles.filterChip, statusFilter === tab && styles.filterChipActive]}
-              onPress={() => setStatusFilter(tab)}
-            >
-              <Text style={[styles.filterChipText, statusFilter === tab && styles.filterChipTextActive]}>
-                {tab === 'All' ? `All (${projects.length})` : tab}
-              </Text>
-            </TouchableOpacity>
-          ))}
+          {(['All', 'Draft', 'Dispatched', 'Completed'] as const).map(tab => {
+            const count = tab === 'All' 
+              ? projects.length 
+              : projects.filter(p => p.status === tab).length;
+
+            return (
+              <TouchableOpacity
+                key={tab}
+                style={[styles.filterChip, statusFilter === tab && styles.filterChipActive]}
+                onPress={() => setStatusFilter(tab)}
+              >
+                <Text style={[styles.filterChipText, statusFilter === tab && styles.filterChipTextActive]}>
+                  {tab} ({count})
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
         </View>
 
         {/* Projects List */}
@@ -99,9 +105,15 @@ export default function ProjectsScreen({ navigation }: any) {
           ListEmptyComponent={
             <View style={styles.emptyContainer}>
               <Ionicons name="folder-open-outline" size={48} color="#CBD5E1" />
-              <Text style={styles.emptyTitle}>No Projects Found</Text>
+              <Text style={styles.emptyTitle}>
+                {statusFilter === 'All' ? 'No Projects Found' : `No ${statusFilter} Projects`}
+              </Text>
               <Text style={styles.emptySubtitle}>
-                Tap the '+' button below to start a new Chain of Custody inspection.
+                {statusFilter === 'Dispatched' 
+                  ? "When you submit a Chain of Custody, it will appear here. You can also tap 'Submitted' above to view sent records."
+                  : statusFilter === 'Draft'
+                  ? "Tap the '+' button below to create and start a new project inspection."
+                  : "Tap the '+' button below to start a new Chain of Custody inspection."}
               </Text>
             </View>
           }

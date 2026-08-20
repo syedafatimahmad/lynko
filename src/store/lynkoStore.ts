@@ -310,10 +310,44 @@ export const useLynkoStore = create<LynkoState>()(
       },
 
       addSubmission: async (sub) => {
-        set((state) => ({ submissions: [sub, ...state.submissions] }));
+        const currentProjects = get().projects;
+        const matchingProject = currentProjects.find(p => 
+          (sub.poNumber && p.poNumber && p.poNumber.trim().toLowerCase() === sub.poNumber.trim().toLowerCase()) ||
+          (sub.projectId && p.id === sub.projectId)
+        );
+
+        let updatedProjects: Project[];
+        if (matchingProject) {
+          updatedProjects = currentProjects.map(p => 
+            p.id === matchingProject.id ? { ...p, status: 'Dispatched' as const, samplesCount: sub.samplesCount } : p
+          );
+        } else {
+          // If no matching project card existed, create one with Dispatched status
+          const newProj: Project = {
+            id: sub.projectId || `proj_${Date.now()}`,
+            poNumber: sub.poNumber || 'N/A',
+            title: sub.projectTitle || 'Field Inspection CoC',
+            description: sub.projectTitle || '',
+            address: get().cocData.contactAddress || 'Field Inspection Branch',
+            zipCode: get().cocData.zipCode || '',
+            samplesCount: sub.samplesCount,
+            status: 'Dispatched',
+            date: new Date().toLocaleDateString(),
+          };
+          updatedProjects = [newProj, ...currentProjects];
+        }
+
+        set((state) => ({ 
+          submissions: [sub, ...state.submissions],
+          projects: updatedProjects,
+        }));
+
         if (auth.currentUser) {
           try {
             await setDoc(doc(db, 'users', auth.currentUser.uid, 'submissions', sub.id), sub);
+            for (const p of updatedProjects) {
+              await setDoc(doc(db, 'users', auth.currentUser.uid, 'projects', p.id), p, { merge: true });
+            }
           } catch (e) {
             console.warn('Firestore submission sync deferred:', e);
           }
@@ -321,13 +355,31 @@ export const useLynkoStore = create<LynkoState>()(
       },
 
       updateSubmissionStatus: async (id, status) => {
-        set((state) => ({
-          submissions: state.submissions.map(s => s.id === id ? { ...s, status } : s)
-        }));
-        const updated = get().submissions.find(s => s.id === id);
+        const updatedSubmissions = get().submissions.map(s => s.id === id ? { ...s, status } : s);
+        const sub = updatedSubmissions.find(s => s.id === id);
+        
+        let updatedProjects = get().projects;
+        if (sub) {
+          const matchingProj = updatedProjects.find(p => p.poNumber && p.poNumber === sub.poNumber);
+          if (matchingProj) {
+            const projStatus: 'Completed' | 'Dispatched' | 'Draft' = 
+              status === 'Delivered' ? 'Completed' : status === 'Dispatched' ? 'Dispatched' : 'Draft';
+            updatedProjects = updatedProjects.map(p => p.id === matchingProj.id ? { ...p, status: projStatus } : p);
+          }
+        }
+
+        set({
+          submissions: updatedSubmissions,
+          projects: updatedProjects,
+        });
+
+        const updated = updatedSubmissions.find(s => s.id === id);
         if (auth.currentUser && updated) {
           try {
             await setDoc(doc(db, 'users', auth.currentUser.uid, 'submissions', id), updated, { merge: true });
+            for (const p of updatedProjects) {
+              await setDoc(doc(db, 'users', auth.currentUser.uid, 'projects', p.id), p, { merge: true });
+            }
           } catch (e) {
             console.warn('Firestore submission update deferred:', e);
           }
