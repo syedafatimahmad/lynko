@@ -248,8 +248,11 @@ export const signInWithGoogle = async (): Promise<{ user: FirebaseUser; profile:
 /**
  * Signs in user with Google ID Token credential (for Native Android/iOS AuthSession)
  */
-export const signInWithGoogleCredential = async (idToken: string): Promise<{ user: FirebaseUser; profile: UserProfile }> => {
-  const credential = GoogleAuthProvider.credential(idToken);
+export const signInWithGoogleCredential = async (
+  idToken?: string | null, 
+  accessToken?: string | null
+): Promise<{ user: FirebaseUser; profile: UserProfile }> => {
+  const credential = GoogleAuthProvider.credential(idToken || null, accessToken || null);
   const userCredential = await signInWithCredential(auth, credential);
   const user = userCredential.user;
 

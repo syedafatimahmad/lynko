@@ -199,17 +199,20 @@ export default function SignInScreen() {
     }
   };
 
-  const [request, response, promptAsync] = Google.useIdTokenAuthRequest({
-    clientId: '429476843085-69p861nle0eqn9r8mbl2n5d5l9kpia7r.apps.googleusercontent.com',
+  const [request, response, promptAsync] = Google.useAuthRequest({
+    androidClientId: '429476843085-tcr64sski33n7l7dgk7vdq88smvkdb3t.apps.googleusercontent.com',
     webClientId: '429476843085-69p861nle0eqn9r8mbl2n5d5l9kpia7r.apps.googleusercontent.com',
+    clientId: '429476843085-69p861nle0eqn9r8mbl2n5d5l9kpia7r.apps.googleusercontent.com',
   });
 
   React.useEffect(() => {
     if (response?.type === 'success') {
-      const { id_token } = response.params;
-      if (id_token) {
+      const idToken = response.params?.id_token || response.authentication?.idToken;
+      const accessToken = response.params?.access_token || response.authentication?.accessToken;
+      
+      if (idToken || accessToken) {
         setLoading(true);
-        signInWithGoogleCredential(id_token)
+        signInWithGoogleCredential(idToken, accessToken)
           .then(async ({ user, profile }) => {
             setUser(user);
             setUserData(profile);
