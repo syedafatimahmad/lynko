@@ -170,18 +170,26 @@ export default function ProjectsScreen({ navigation }: any) {
 
                     <TouchableOpacity 
                       style={styles.deleteButton} 
+                      hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
                       onPress={() => {
                         Alert.alert(
                           'Delete Project',
-                          `Are you sure you want to remove PO #${item.poNumber || 'this project'}?`,
+                          `Are you sure you want to remove ${item.title || `PO #${item.poNumber}`}?`,
                           [
                             { text: 'Cancel', style: 'cancel' },
-                            { text: 'Delete', style: 'destructive', onPress: () => deleteProject(item.id) }
+                            { 
+                              text: 'Delete', 
+                              style: 'destructive', 
+                              onPress: async () => {
+                                await deleteProject(item.id);
+                              } 
+                            }
                           ]
                         );
                       }}
+                      activeOpacity={0.7}
                     >
-                      <Ionicons name="trash-outline" size={18} color="#94A3B8" />
+                      <Ionicons name="trash-outline" size={16} color="#DC2626" />
                     </TouchableOpacity>
                   </View>
                 </View>
@@ -383,7 +391,12 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
   },
   deleteButton: {
-    padding: 4,
+    padding: 6,
+    borderRadius: 14,
+    backgroundColor: '#FEE2E2',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: 4,
   },
   cardTitle: {
     fontSize: 16,

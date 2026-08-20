@@ -148,8 +148,13 @@ export default function SubmittedCoCScreen({ navigation }: any) {
             <Text style={styles.resendBtnText}>Resend CoC</Text>
           </TouchableOpacity>
 
-          <TouchableOpacity style={styles.deleteBtn} onPress={() => handleDelete(item.id, item.poNumber)}>
-            <Ionicons name="trash-outline" size={18} color="#94A3B8" />
+          <TouchableOpacity 
+            style={styles.deleteBtn} 
+            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+            onPress={() => handleDelete(item.id, item.poNumber)}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="trash-outline" size={16} color="#DC2626" />
           </TouchableOpacity>
         </View>
       </View>
@@ -427,10 +432,10 @@ const styles = StyleSheet.create({
   },
   deleteBtn: {
     padding: 8,
-    borderRadius: 6,
-    backgroundColor: '#F8FAFC',
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
+    borderRadius: 8,
+    backgroundColor: '#FEE2E2',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   emptyContainer: {
     alignItems: 'center',

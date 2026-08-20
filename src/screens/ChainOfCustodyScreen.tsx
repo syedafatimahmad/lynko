@@ -343,7 +343,12 @@ export default function ChainOfCustodyScreen({ navigation }: any) {
               {photos.map((uri, index) => (
                 <View key={index} style={styles.photoThumbWrapper}>
                   <Image source={{ uri }} style={styles.photoThumbnail} resizeMode="cover" />
-                  <TouchableOpacity style={styles.photoDeleteBtn} onPress={() => handleRemovePhoto(index)}>
+                  <TouchableOpacity 
+                    style={styles.photoDeleteBtn} 
+                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                    onPress={() => handleRemovePhoto(index)}
+                    activeOpacity={0.8}
+                  >
                     <Ionicons name="close" size={14} color="#fff" />
                   </TouchableOpacity>
                   <Text style={styles.photoBadge}>#{index + 1}</Text>
@@ -559,7 +564,7 @@ const styles = StyleSheet.create({
   photoGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 10 },
   photoThumbWrapper: { width: 80, height: 80, borderRadius: 8, overflow: 'hidden', borderWidth: 1, borderColor: '#CBD5E1', position: 'relative' },
   photoThumbnail: { width: '100%', height: '100%' },
-  photoDeleteBtn: { position: 'absolute', top: 3, right: 3, backgroundColor: 'rgba(0,0,0,0.65)', width: 20, height: 20, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  photoDeleteBtn: { position: 'absolute', top: 3, right: 3, backgroundColor: 'rgba(220, 38, 38, 0.9)', width: 24, height: 24, borderRadius: 12, alignItems: 'center', justifyContent: 'center', zIndex: 10 },
   photoBadge: { position: 'absolute', bottom: 3, left: 3, backgroundColor: 'rgba(0,0,0,0.65)', color: '#fff', fontSize: 10, fontWeight: 'bold', paddingHorizontal: 4, borderRadius: 4 },
   emptyPhotosText: { fontSize: 13, color: colors.outline, fontStyle: 'italic', marginTop: 6 },
   editSamplesRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#F1F5F9' },
