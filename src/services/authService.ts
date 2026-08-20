@@ -7,6 +7,7 @@ import {
   GoogleAuthProvider,
   signInWithPopup,
   signInWithRedirect,
+  signInWithCredential,
   User as FirebaseUser
 } from 'firebase/auth';
 import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
@@ -220,6 +221,37 @@ export const signInWithGoogle = async (): Promise<{ user: FirebaseUser; profile:
       throw new Error('Google Sign-In on Android requires configuring Google OAuth in the Firebase Console. You can sign in immediately using your Email and Password above.');
     }
   }
+
+  let profile: UserProfile = {
+    uid: user.uid,
+    email: user.email || '',
+    displayName: user.displayName || user.email?.split('@')[0] || 'Field Inspector',
+    photoURL: user.photoURL || null,
+    role: 'user',
+  };
+
+  try {
+    const userDocRef = doc(db, 'users', user.uid);
+    const docSnap = await getDoc(userDocRef);
+    if (docSnap.exists()) {
+      profile = docSnap.data() as UserProfile;
+    } else {
+      await setDoc(userDocRef, { ...profile, createdAt: serverTimestamp() }, { merge: true });
+    }
+  } catch (dbErr) {
+    console.warn('Firestore profile sync deferred:', dbErr);
+  }
+
+  return { user, profile };
+};
+
+/**
+ * Signs in user with Google ID Token credential (for Native Android/iOS AuthSession)
+ */
+export const signInWithGoogleCredential = async (idToken: string): Promise<{ user: FirebaseUser; profile: UserProfile }> => {
+  const credential = GoogleAuthProvider.credential(idToken);
+  const userCredential = await signInWithCredential(auth, credential);
+  const user = userCredential.user;
 
   let profile: UserProfile = {
     uid: user.uid,

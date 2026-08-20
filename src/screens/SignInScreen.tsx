@@ -14,12 +14,15 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import * as WebBrowser from 'expo-web-browser';
+import * as Google from 'expo-auth-session/providers/google';
 import { 
   signUpWithEmail, 
   signInWithEmail, 
   resetPassword, 
   resendVerificationEmail, 
   signInWithGoogle, 
+  signInWithGoogleCredential,
   mapAuthError,
   logoutUser 
 } from '../services/authService';
@@ -27,6 +30,8 @@ import { useAuthStore } from '../store/authStore';
 import { useLynkoStore } from '../store/lynkoStore';
 import { colors } from '../theme/colors';
 import { auth } from '../config/firebase';
+
+WebBrowser.maybeCompleteAuthSession();
 
 export default function SignInScreen() {
   const [isRegistering, setIsRegistering] = useState(false);
@@ -194,22 +199,60 @@ export default function SignInScreen() {
     }
   };
 
+  const [request, response, promptAsync] = Google.useIdTokenAuthRequest({
+    clientId: '429476843085-69p861nle0eqn9r8mbl2n5d5l9kpia7r.apps.googleusercontent.com',
+  });
+
+  React.useEffect(() => {
+    if (response?.type === 'success') {
+      const { id_token } = response.params;
+      if (id_token) {
+        setLoading(true);
+        signInWithGoogleCredential(id_token)
+          .then(async ({ user, profile }) => {
+            setUser(user);
+            setUserData(profile);
+            await syncFromFirestore();
+          })
+          .catch((err) => {
+            const parsed = mapAuthError(err);
+            setError(parsed.message);
+          })
+          .finally(() => {
+            setLoading(false);
+          });
+      }
+    }
+  }, [response]);
+
   const handleGoogleAuth = async () => {
     setLoading(true);
     setError('');
     setInfoMessage('');
     setQuickActionType(null);
 
-    try {
-      const { user, profile } = await signInWithGoogle();
-      setUser(user);
-      setUserData(profile);
-      await syncFromFirestore();
-    } catch (err: any) {
-      console.error('Google Auth Error:', err);
-      const parsed = mapAuthError(err);
-      setError(parsed.message);
-      setLoading(false);
+    if (Platform.OS === 'web') {
+      try {
+        const { user, profile } = await signInWithGoogle();
+        setUser(user);
+        setUserData(profile);
+        await syncFromFirestore();
+      } catch (err: any) {
+        console.error('Google Auth Error:', err);
+        const parsed = mapAuthError(err);
+        setError(parsed.message);
+      } finally {
+        setLoading(false);
+      }
+    } else {
+      try {
+        await promptAsync();
+      } catch (err: any) {
+        console.error('Google Auth Prompt Error:', err);
+        setError('Could not initialize Google authentication session.');
+      } finally {
+        setLoading(false);
+      }
     }
   };
 
