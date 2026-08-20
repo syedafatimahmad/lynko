@@ -168,12 +168,12 @@ export default function ChainOfCustodyScreen({ navigation }: any) {
           </View>
         )}
 
-        <Text style={styles.projectContext}>Project: {cocData.description || 'Alpha Environmental Site'}</Text>
+        <Text style={styles.projectContext}>Project: {cocData.description || 'Lynko Inspection Site'}</Text>
 
         {/* Card 1: Project Information */}
         <View style={styles.card}>
           <Text style={styles.cardTitle}>Project Information</Text>
-          <Text style={styles.cardSubtitle}>Alpha Environmental Field Operations</Text>
+          <Text style={styles.cardSubtitle}>Lynko Field Operations</Text>
 
           <View style={styles.inputGroup}>
             <Text style={styles.label}>
@@ -262,7 +262,7 @@ export default function ChainOfCustodyScreen({ navigation }: any) {
                   style={styles.input}
                   value={cocData.contactName}
                   onChangeText={(text) => updateCoCData({ contactName: text })}
-                  placeholder="Alpha Environmental Inc."
+                  placeholder="Lynko Operations Inc."
                   placeholderTextColor="#94A3B8"
                 />
               </View>
@@ -290,7 +290,7 @@ export default function ChainOfCustodyScreen({ navigation }: any) {
             </View>
           ) : (
             <View style={styles.contactDetailsBox}>
-              <Text style={styles.contactCompany}>{cocData.contactName || 'Alpha Environmental'}</Text>
+              <Text style={styles.contactCompany}>{cocData.contactName || 'Lynko'}</Text>
               <Text style={styles.contactSub}>{cocData.contactAddress || 'Field Inspection Branch'}</Text>
               <Text style={styles.contactSub}>{cocData.contactPhone || 'Direct Lab Dispatch'}</Text>
             </View>

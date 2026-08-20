@@ -393,7 +393,7 @@ export default function SignInScreen() {
                     if (error) setError(''); 
                     if (quickActionType) setQuickActionType(null);
                   }}
-                  placeholder="e.g. inspector@alphaenvironmental.us"
+                  placeholder="e.g. inspector@lynko.app"
                   placeholderTextColor="#94A3B8"
                   autoCapitalize="none"
                   keyboardType="email-address"
@@ -464,7 +464,7 @@ export default function SignInScreen() {
 
             <View style={styles.footerNote}>
               <Text style={styles.footerNoteText}>
-                Lynko • Alpha Environmental Field Suite
+                Lynko Field Suite
               </Text>
             </View>
           </View>

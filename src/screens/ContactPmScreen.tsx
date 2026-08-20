@@ -30,7 +30,7 @@ export default function ContactPmScreen({ navigation }: any) {
           </View>
           
           <Text style={styles.name}>Ali Saleh</Text>
-          <Text style={styles.role}>Project Manager • Alpha Environmental</Text>
+          <Text style={styles.role}>Project Manager • Lynko</Text>
           
           <Text style={styles.phone}>📞 214-994-9874</Text>
           

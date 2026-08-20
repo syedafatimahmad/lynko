@@ -102,7 +102,7 @@ interface LynkoState {
 
 const initialCoCData: CoCData = {
   poNumber: '',
-  accountInfo: 'Alpha Environmental - DFW/47674',
+  accountInfo: 'Lynko - DFW/47674',
   description: '',
   zipCode: '',
   samplingDate: new Date().toLocaleDateString(),
@@ -120,7 +120,7 @@ const initialCoCData: CoCData = {
   turnaround2: '',
 };
 
-const defaultRecipients = ['info@alphaenvironmental.us', 'lab@alphaenvironmental.us'];
+const defaultRecipients = ['thelynkoapp@gmail.com', 'info@lynko.app'];
 
 export const useLynkoStore = create<LynkoState>()(
   persist(

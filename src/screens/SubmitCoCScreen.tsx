@@ -31,10 +31,10 @@ export default function SubmitCoCScreen({ route, navigation }: any) {
   const initialRecipient = route?.params?.prefillRecipient || (recipientHistory.length > 0 ? recipientHistory[0] : '');
   const [recipientEmail, setRecipientEmail] = useState(initialRecipient);
   const [subject, setSubject] = useState(
-    route?.params?.prefillSubject || `Chain of Custody - ${cocData.poNumber ? `PO #${cocData.poNumber}` : 'Alpha Environmental Inspection'}`
+    route?.params?.prefillSubject || `Chain of Custody - ${cocData.poNumber ? `PO #${cocData.poNumber}` : 'Lynko Inspection'}`
   );
   const [message, setMessage] = useState(
-    `Hello,\n\nPlease find attached the Chain of Custody document and project inspection details for PO #${cocData.poNumber || '47674'}.\n\nTotal Samples: ${samples.length}\nDate: ${cocData.samplingDate || new Date().toLocaleDateString()}\nSampled By: ${cocData.sampledBy || user?.displayName || 'Ali Saleh'}\n\nThank you,\nAlpha Environmental Inspection Team`
+    `Hello,\n\nPlease find attached the Chain of Custody document and project inspection details for PO #${cocData.poNumber || '47674'}.\n\nTotal Samples: ${samples.length}\nDate: ${cocData.samplingDate || new Date().toLocaleDateString()}\nSampled By: ${cocData.sampledBy || user?.displayName || 'Ali Saleh'}\n\nThank you,\nLynko Inspection Team`
   );
   const [sending, setSending] = useState(false);
 
@@ -152,7 +152,7 @@ export default function SubmitCoCScreen({ route, navigation }: any) {
           <Text style={styles.cardLabel}>FROM (AUTHENTICATED SENDER)</Text>
           <View style={styles.senderRow}>
             <Ionicons name="person-circle" size={22} color={colors.primaryContainer} style={{ marginRight: 8 }} />
-            <Text style={styles.senderEmail}>{user?.email || 'inspector@alphaenvironmental.us'}</Text>
+            <Text style={styles.senderEmail}>{user?.email || 'inspector@lynko.app'}</Text>
           </View>
         </View>
 
@@ -163,7 +163,7 @@ export default function SubmitCoCScreen({ route, navigation }: any) {
             <Ionicons name="mail-outline" size={18} color={colors.outline} style={{ marginRight: 8 }} />
             <TextInput
               style={styles.input}
-              placeholder="e.g. info@alphaenvironmental.us"
+              placeholder="e.g. info@lynko.app"
               value={recipientEmail}
               onChangeText={setRecipientEmail}
               autoCapitalize="none"
