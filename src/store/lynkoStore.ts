@@ -10,10 +10,13 @@ export interface Project {
   title: string;
   address: string;
   samplesCount: number;
-  status: 'Completed' | 'Draft' | 'Dispatched';
+  status: 'Draft' | 'Submitted';
   date: string;
   description: string;
   zipCode: string;
+  pdfUri?: string;
+  submittedAt?: string;
+  recipientEmail?: string;
 }
 
 export interface SampleItem {
@@ -319,10 +322,18 @@ export const useLynkoStore = create<LynkoState>()(
         let updatedProjects: Project[];
         if (matchingProject) {
           updatedProjects = currentProjects.map(p => 
-            p.id === matchingProject.id ? { ...p, status: 'Dispatched' as const, samplesCount: sub.samplesCount } : p
+            p.id === matchingProject.id 
+              ? { 
+                  ...p, 
+                  status: 'Submitted' as const, 
+                  samplesCount: sub.samplesCount,
+                  pdfUri: sub.pdfUri,
+                  submittedAt: sub.submittedAt,
+                  recipientEmail: sub.recipientEmail
+                } 
+              : p
           );
         } else {
-          // If no matching project card existed, create one with Dispatched status
           const newProj: Project = {
             id: sub.projectId || `proj_${Date.now()}`,
             poNumber: sub.poNumber || 'N/A',
@@ -331,8 +342,11 @@ export const useLynkoStore = create<LynkoState>()(
             address: get().cocData.contactAddress || 'Field Inspection Branch',
             zipCode: get().cocData.zipCode || '',
             samplesCount: sub.samplesCount,
-            status: 'Dispatched',
+            status: 'Submitted',
             date: new Date().toLocaleDateString(),
+            pdfUri: sub.pdfUri,
+            submittedAt: sub.submittedAt,
+            recipientEmail: sub.recipientEmail,
           };
           updatedProjects = [newProj, ...currentProjects];
         }
@@ -362,8 +376,7 @@ export const useLynkoStore = create<LynkoState>()(
         if (sub) {
           const matchingProj = updatedProjects.find(p => p.poNumber && p.poNumber === sub.poNumber);
           if (matchingProj) {
-            const projStatus: 'Completed' | 'Dispatched' | 'Draft' = 
-              status === 'Delivered' ? 'Completed' : status === 'Dispatched' ? 'Dispatched' : 'Draft';
+            const projStatus: 'Draft' | 'Submitted' = 'Submitted';
             updatedProjects = updatedProjects.map(p => p.id === matchingProj.id ? { ...p, status: projStatus } : p);
           }
         }

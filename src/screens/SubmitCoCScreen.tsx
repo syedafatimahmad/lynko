@@ -102,15 +102,11 @@ export default function SubmitCoCScreen({ route, navigation }: any) {
 
       // 3. User Success Confirmation
       Alert.alert(
-        'Chain of Custody Dispatched',
-        `Dispatched to ${cleanTo}. Your submission has been securely recorded and archived in your Submissions History.`,
+        'Chain of Custody Submitted',
+        `Successfully sent to ${cleanTo}.\n\nYour project is now updated and listed in the 'Submitted' tab with its PDF document.`,
         [
           { 
-            text: 'View Submissions Log', 
-            onPress: () => navigation.replace('SubmittedCoC') 
-          },
-          { 
-            text: 'Done', 
+            text: 'View Projects', 
             onPress: () => navigation.navigate('AppTabs') 
           }
         ]

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { 
   View, 
   Text, 
@@ -7,54 +7,77 @@ import {
   StyleSheet, 
   TextInput, 
   Platform,
-  AppState,
-  ActivityIndicator,
   Alert
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { useLynkoStore } from '../store/lynkoStore';
+import * as Print from 'expo-print';
+import { useLynkoStore, Project } from '../store/lynkoStore';
+import { generatePDF } from '../utils/pdfGenerator';
 import { colors } from '../theme/colors';
 
 export default function ProjectsScreen({ navigation }: any) {
   const projects = useLynkoStore((state) => state.projects);
-  const submissions = useLynkoStore((state) => state.submissions);
+  const cocData = useLynkoStore((state) => state.cocData);
+  const samples = useLynkoStore((state) => state.samples);
   const updateCoCData = useLynkoStore((state) => state.updateCoCData);
   const deleteProject = useLynkoStore((state) => state.deleteProject);
   
   const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'All' | 'Draft' | 'Dispatched' | 'Completed'>('All');
+  const [statusFilter, setStatusFilter] = useState<'All' | 'Draft' | 'Submitted'>('All');
 
   const filteredProjects = projects.filter(p => {
     const matchesSearch = 
       (p.title || '').toLowerCase().includes(search.toLowerCase()) || 
       (p.poNumber || '').toLowerCase().includes(search.toLowerCase()) ||
-      (p.description || '').toLowerCase().includes(search.toLowerCase());
-    const matchesFilter = statusFilter === 'All' ? true : p.status === statusFilter;
+      (p.description || '').toLowerCase().includes(search.toLowerCase()) ||
+      (p.address || '').toLowerCase().includes(search.toLowerCase());
+    
+    const matchesFilter = 
+      statusFilter === 'All' ? true :
+      statusFilter === 'Draft' ? (p.status === 'Draft' || !p.status) :
+      p.status === 'Submitted';
+
     return matchesSearch && matchesFilter;
   });
 
+  const handleOpenPdf = async (item: Project) => {
+    try {
+      if (item.pdfUri) {
+        await Print.printAsync({ uri: item.pdfUri });
+      } else {
+        // Generate on-the-fly if legacy record
+        const uri = await generatePDF(null, {
+          ...cocData,
+          poNumber: item.poNumber,
+          description: item.description || item.title,
+          zipCode: item.zipCode,
+        }, samples);
+        if (uri) {
+          await Print.printAsync({ uri });
+        }
+      }
+    } catch (e: any) {
+      console.error('Error opening PDF:', e);
+      Alert.alert('Notice', 'Could not open PDF viewer on device.');
+    }
+  };
+
+  const handleEditProject = (item: Project) => {
+    updateCoCData({
+      poNumber: item.poNumber,
+      description: item.description || item.title || '',
+      zipCode: item.zipCode || '',
+    });
+    navigation.navigate('ChainOfCustody');
+  };
+
   return (
     <SafeAreaView style={styles.safeArea}>
-      {/* Header with Submissions History shortcut */}
+      {/* Clean Header */}
       <View style={styles.header}>
-        <View style={{ flex: 1, paddingRight: 8 }}>
-          <Text style={styles.title}>Projects</Text>
-          <Text style={styles.subtitle} numberOfLines={1}>Manage and search inspection jobs</Text>
-        </View>
-
-        <TouchableOpacity 
-          style={styles.submissionsBtn} 
-          onPress={() => navigation.navigate('SubmittedCoC')}
-        >
-          <Ionicons name="document-text-outline" size={16} color={colors.primary} style={{ marginRight: 4 }} />
-          <Text style={styles.submissionsBtnText}>Submitted</Text>
-          {submissions.length > 0 && (
-            <View style={styles.submissionsCountBadge}>
-              <Text style={styles.submissionsCountText}>{submissions.length}</Text>
-            </View>
-          )}
-        </TouchableOpacity>
+        <Text style={styles.title}>Projects</Text>
+        <Text style={styles.subtitle}>Manage drafts and submitted Chains of Custody</Text>
       </View>
 
       <View style={styles.container}>
@@ -75,25 +98,23 @@ export default function ProjectsScreen({ navigation }: any) {
           ) : null}
         </View>
 
-        {/* Filter Chips with Real-Time Counts */}
+        {/* 3 Simple, Clear Tabs */}
         <View style={styles.filterRow}>
-          {(['All', 'Draft', 'Dispatched', 'Completed'] as const).map(tab => {
-            const count = tab === 'All' 
-              ? projects.length 
-              : projects.filter(p => p.status === tab).length;
-
-            return (
-              <TouchableOpacity
-                key={tab}
-                style={[styles.filterChip, statusFilter === tab && styles.filterChipActive]}
-                onPress={() => setStatusFilter(tab)}
-              >
-                <Text style={[styles.filterChipText, statusFilter === tab && styles.filterChipTextActive]}>
-                  {tab} ({count})
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
+          {[
+            { key: 'All' as const, label: 'All', count: projects.length },
+            { key: 'Draft' as const, label: 'Drafts', count: projects.filter(p => p.status === 'Draft' || !p.status).length },
+            { key: 'Submitted' as const, label: 'Submitted', count: projects.filter(p => p.status === 'Submitted').length },
+          ].map(tab => (
+            <TouchableOpacity
+              key={tab.key}
+              style={[styles.filterChip, statusFilter === tab.key && styles.filterChipActive]}
+              onPress={() => setStatusFilter(tab.key)}
+            >
+              <Text style={[styles.filterChipText, statusFilter === tab.key && styles.filterChipTextActive]}>
+                {tab.label} ({tab.count})
+              </Text>
+            </TouchableOpacity>
+          ))}
         </View>
 
         {/* Projects List */}
@@ -104,67 +125,125 @@ export default function ProjectsScreen({ navigation }: any) {
           showsVerticalScrollIndicator={false}
           ListEmptyComponent={
             <View style={styles.emptyContainer}>
-              <Ionicons name="folder-open-outline" size={48} color="#CBD5E1" />
+              <Ionicons 
+                name={statusFilter === 'Submitted' ? 'checkmark-circle-outline' : 'folder-open-outline'} 
+                size={48} 
+                color="#CBD5E1" 
+              />
               <Text style={styles.emptyTitle}>
-                {statusFilter === 'All' ? 'No Projects Found' : `No ${statusFilter} Projects`}
+                {statusFilter === 'All' ? 'No Projects Found' : 
+                 statusFilter === 'Submitted' ? 'No Submitted CoCs Yet' : 'No Draft Projects'}
               </Text>
               <Text style={styles.emptySubtitle}>
-                {statusFilter === 'Dispatched' 
-                  ? "When you submit a Chain of Custody, it will appear here. You can also tap 'Submitted' above to view sent records."
-                  : statusFilter === 'Draft'
-                  ? "Tap the '+' button below to create and start a new project inspection."
+                {statusFilter === 'Submitted'
+                  ? "When you finish and submit a Chain of Custody, it will appear here with its PDF document."
                   : "Tap the '+' button below to start a new Chain of Custody inspection."}
               </Text>
             </View>
           }
-          renderItem={({ item }) => (
-            <TouchableOpacity 
-              style={styles.card}
-              onPress={() => {
-                updateCoCData({
-                  poNumber: item.poNumber,
-                  description: item.description || '',
-                  zipCode: item.zipCode || '',
-                });
-                navigation.navigate('ChainOfCustody');
-              }}
-              activeOpacity={0.7}
-            >
-              <View style={styles.cardHeaderRow}>
-                <View style={styles.poBadge}>
-                  <Text style={styles.poNumber}>PO #{item.poNumber || 'N/A'}</Text>
+          renderItem={({ item }) => {
+            const isSubmitted = item.status === 'Submitted';
+
+            return (
+              <View style={[styles.card, isSubmitted && styles.cardSubmitted]}>
+                {/* Header Row: PO # & Status Badge & Delete */}
+                <View style={styles.cardHeaderRow}>
+                  <View style={styles.poBadge}>
+                    <Text style={styles.poNumber}>PO #{item.poNumber || 'N/A'}</Text>
+                  </View>
+
+                  <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                    <View style={[
+                      styles.statusBadge,
+                      isSubmitted ? styles.statusBadgeSubmitted : styles.statusBadgeDraft
+                    ]}>
+                      <Ionicons 
+                        name={isSubmitted ? "checkmark-circle" : "create-outline"} 
+                        size={12} 
+                        color="#FFFFFF" 
+                        style={{ marginRight: 4 }} 
+                      />
+                      <Text style={styles.statusBadgeText}>
+                        {isSubmitted ? 'Submitted' : 'Draft'}
+                      </Text>
+                    </View>
+
+                    <TouchableOpacity 
+                      style={styles.deleteButton} 
+                      onPress={() => {
+                        Alert.alert(
+                          'Delete Project',
+                          `Are you sure you want to remove PO #${item.poNumber || 'this project'}?`,
+                          [
+                            { text: 'Cancel', style: 'cancel' },
+                            { text: 'Delete', style: 'destructive', onPress: () => deleteProject(item.id) }
+                          ]
+                        );
+                      }}
+                    >
+                      <Ionicons name="trash-outline" size={18} color="#94A3B8" />
+                    </TouchableOpacity>
+                  </View>
                 </View>
-                <TouchableOpacity style={styles.deleteButton} onPress={() => deleteProject(item.id)}>
-                  <Ionicons name="trash-outline" size={18} color="#94A3B8" />
-                </TouchableOpacity>
-              </View>
-              
-              <Text style={styles.cardTitle}>{item.title}</Text>
-              {item.description ? <Text style={styles.descriptionText}>{item.description}</Text> : null}
-              <Text style={styles.address}>📍 {item.address || 'No address specified'}</Text>
-              
-              <View style={styles.cardFooter}>
-                <Text style={styles.samplesCount}>🧪 {item.samplesCount || 0} Samples</Text>
                 
-                <View style={[
-                  styles.statusBadge,
-                  item.status === 'Completed' ? styles.statusBadgeCompleted :
-                  item.status === 'Dispatched' ? styles.statusBadgeDispatched : styles.statusBadgeDraft
-                ]}>
-                  <Text style={[
-                    styles.statusText,
-                    item.status === 'Completed' ? styles.statusTextCompleted :
-                    item.status === 'Dispatched' ? styles.statusTextDispatched : styles.statusTextDraft
-                  ]}>
-                    {item.status || 'Draft'}
-                  </Text>
+                {/* Project Title & Details */}
+                <Text style={styles.cardTitle}>{item.title || item.description || 'Field Inspection'}</Text>
+                {item.description && item.description !== item.title ? (
+                  <Text style={styles.descriptionText}>{item.description}</Text>
+                ) : null}
+                
+                <Text style={styles.address}>📍 {item.address || 'Field Location'}</Text>
+                
+                {isSubmitted && (
+                  <View style={styles.submissionMetaBox}>
+                    <Ionicons name="paper-plane-outline" size={14} color={colors.primaryContainer} style={{ marginRight: 6 }} />
+                    <Text style={styles.submissionMetaText} numberOfLines={1}>
+                      Sent to <Text style={{ fontWeight: '700' }}>{item.recipientEmail || 'Testing Lab'}</Text>
+                      {item.submittedAt ? ` • ${item.submittedAt}` : ''}
+                    </Text>
+                  </View>
+                )}
+
+                {/* Footer Action Buttons */}
+                <View style={styles.cardFooter}>
+                  <Text style={styles.samplesCount}>🧪 {item.samplesCount || 0} Samples</Text>
+
+                  <View style={styles.actionButtonsRow}>
+                    {isSubmitted ? (
+                      <TouchableOpacity 
+                        style={styles.viewPdfButton} 
+                        onPress={() => handleOpenPdf(item)}
+                        activeOpacity={0.8}
+                      >
+                        <Ionicons name="document-text" size={14} color="#FFFFFF" style={{ marginRight: 4 }} />
+                        <Text style={styles.viewPdfButtonText}>View PDF</Text>
+                      </TouchableOpacity>
+                    ) : null}
+
+                    <TouchableOpacity 
+                      style={isSubmitted ? styles.editOutlineButton : styles.continueDraftButton} 
+                      onPress={() => handleEditProject(item)}
+                      activeOpacity={0.8}
+                    >
+                      <Ionicons 
+                        name={isSubmitted ? "open-outline" : "arrow-forward-circle"} 
+                        size={14} 
+                        color={isSubmitted ? colors.primary : "#FFFFFF"} 
+                        style={{ marginRight: 4 }} 
+                      />
+                      <Text style={isSubmitted ? styles.editOutlineButtonText : styles.continueDraftButtonText}>
+                        {isSubmitted ? 'Edit CoC' : 'Continue'}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
                 </View>
               </View>
-            </TouchableOpacity>
-          )}
+            );
+          }}
         />
       </View>
 
+      {/* Floating Add Project Action Button */}
       <TouchableOpacity 
         style={styles.fab} 
         onPress={() => navigation.navigate('NewProject')}
@@ -183,9 +262,6 @@ const styles = StyleSheet.create({
     paddingTop: Platform.OS === 'android' ? 24 : 0,
   },
   header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
     paddingHorizontal: 16,
     paddingTop: 36,
     paddingBottom: 12,
@@ -200,66 +276,6 @@ const styles = StyleSheet.create({
     color: colors.secondary,
     marginTop: 2,
   },
-  submissionsBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#E6F8F7',
-    borderWidth: 1,
-    borderColor: colors.primaryContainer,
-    paddingHorizontal: 9,
-    paddingVertical: 5,
-    borderRadius: 20,
-    flexShrink: 0,
-  },
-  submissionsBtnText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: colors.primary,
-  },
-  submissionsCountBadge: {
-    backgroundColor: colors.primaryContainer,
-    borderRadius: 10,
-    paddingHorizontal: 6,
-    paddingVertical: 1,
-    marginLeft: 6,
-  },
-  submissionsCountText: {
-    fontSize: 10,
-    fontWeight: 'bold',
-    color: '#FFFFFF',
-  },
-  verificationBanner: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    backgroundColor: '#FEF3C7',
-    borderWidth: 1,
-    borderColor: '#FCD34D',
-    borderRadius: 10,
-    padding: 12,
-    marginHorizontal: 16,
-    marginBottom: 12,
-  },
-  verificationBannerTitle: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#92400E',
-    marginBottom: 2,
-  },
-  verificationBannerSubtitle: {
-    fontSize: 12,
-    color: '#92400E',
-    lineHeight: 16,
-  },
-  resendBtnInline: {
-    marginTop: 6,
-    alignSelf: 'flex-start',
-  },
-  resendBtnInlineText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#B45309',
-    textDecorationLine: 'underline',
-  },
   container: {
     flex: 1,
     paddingHorizontal: 16,
@@ -267,29 +283,39 @@ const styles = StyleSheet.create({
   searchContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: colors.surfaceContainerLowest,
-    borderRadius: 10,
-    paddingHorizontal: 14,
-    height: 46,
+    backgroundColor: colors.surfaceContainer,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    height: 44,
     marginBottom: 12,
+  },
+  searchIcon: {
+    marginRight: 8,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 14,
+    color: colors.onSurface,
+  },
+  filterRow: {
+    flexDirection: 'row',
+    marginBottom: 16,
+  },
+  filterChip: {
+    flex: 1,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    borderRadius: 8,
+    backgroundColor: '#FFFFFF',
+    marginRight: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
     borderWidth: 1,
     borderColor: '#E2E8F0',
   },
-  searchIcon: { marginRight: 8 },
-  searchInput: { flex: 1, fontSize: 14, color: colors.onSurface },
-  filterRow: {
-    flexDirection: 'row',
-    gap: 8,
-    marginBottom: 14,
-  },
-  filterChip: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 16,
-    backgroundColor: '#F1F5F9',
-  },
   filterChipActive: {
-    backgroundColor: colors.primaryContainer,
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
   },
   filterChipText: {
     fontSize: 12,
@@ -297,24 +323,28 @@ const styles = StyleSheet.create({
     color: colors.secondary,
   },
   filterChipTextActive: {
-    color: '#FFFFFF',
+    color: colors.onPrimary,
     fontWeight: '700',
   },
   listContent: {
-    paddingBottom: 100,
+    paddingBottom: 88,
   },
   card: {
-    backgroundColor: colors.surfaceContainerLowest,
+    backgroundColor: '#FFFFFF',
     borderRadius: 12,
     padding: 16,
-    marginBottom: 14,
+    marginBottom: 12,
     borderWidth: 1,
     borderColor: '#E2E8F0',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.04,
-    shadowRadius: 6,
-    elevation: 2,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  cardSubmitted: {
+    borderColor: '#CCFBF1',
+    backgroundColor: '#FAFDFD',
   },
   cardHeaderRow: {
     flexDirection: 'row',
@@ -325,30 +355,67 @@ const styles = StyleSheet.create({
   poBadge: {
     backgroundColor: '#F1F5F9',
     paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 4,
+    paddingVertical: 4,
+    borderRadius: 6,
   },
   poNumber: {
-    color: colors.primary,
+    fontSize: 12,
     fontWeight: '700',
-    fontSize: 13,
+    color: colors.secondary,
   },
-  deleteButton: { padding: 4 },
+  statusBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    marginRight: 8,
+  },
+  statusBadgeDraft: {
+    backgroundColor: '#F59E0B',
+  },
+  statusBadgeSubmitted: {
+    backgroundColor: colors.primaryContainer,
+  },
+  statusBadgeText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  deleteButton: {
+    padding: 4,
+  },
   cardTitle: {
-    fontSize: 17,
+    fontSize: 16,
     fontWeight: 'bold',
     color: colors.onSurface,
     marginBottom: 4,
   },
   descriptionText: {
-    color: colors.secondary,
     fontSize: 13,
-    marginBottom: 8,
+    color: colors.secondary,
+    marginBottom: 6,
   },
   address: {
-    color: colors.secondary,
-    fontSize: 13,
-    marginBottom: 12,
+    fontSize: 12,
+    color: '#64748B',
+    marginBottom: 10,
+  },
+  submissionMetaBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F0FDFA',
+    borderWidth: 1,
+    borderColor: '#CCFBF1',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 6,
+    marginBottom: 10,
+  },
+  submissionMetaText: {
+    fontSize: 11,
+    color: '#0F766E',
+    flex: 1,
   },
   cardFooter: {
     flexDirection: 'row',
@@ -357,68 +424,92 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: '#F1F5F9',
     paddingTop: 10,
-    marginTop: 'auto',
+    marginTop: 4,
   },
   samplesCount: {
     fontSize: 13,
+    fontWeight: '600',
+    color: colors.primary,
+  },
+  actionButtonsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  viewPdfButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.primary,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 6,
+    marginRight: 8,
+  },
+  viewPdfButtonText: {
+    fontSize: 12,
     fontWeight: '700',
-    color: colors.onSurface,
+    color: '#FFFFFF',
   },
-  statusBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 12,
+  continueDraftButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.primaryContainer,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 6,
+  },
+  continueDraftButtonText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  editOutlineButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
     borderWidth: 1,
+    borderColor: colors.primary,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 6,
   },
-  statusBadgeDraft: {
-    backgroundColor: '#F1F5F9',
-    borderColor: '#E2E8F0',
+  editOutlineButtonText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.primary,
   },
-  statusBadgeDispatched: {
-    backgroundColor: '#E6F8F7',
-    borderColor: '#b2ebe5',
-  },
-  statusBadgeCompleted: {
-    backgroundColor: '#ECFDF5',
-    borderColor: '#A7F3D0',
-  },
-  statusText: { fontSize: 11, fontWeight: '700' },
-  statusTextDraft: { color: colors.secondary },
-  statusTextDispatched: { color: colors.primary },
-  statusTextCompleted: { color: '#047857' },
   emptyContainer: {
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 64,
+    paddingTop: 60,
+    paddingHorizontal: 20,
   },
   emptyTitle: {
     fontSize: 16,
-    fontWeight: '700',
+    fontWeight: 'bold',
     color: colors.onSurface,
     marginTop: 12,
-    marginBottom: 4,
+    marginBottom: 6,
   },
   emptySubtitle: {
     fontSize: 13,
     color: colors.secondary,
     textAlign: 'center',
-    paddingHorizontal: 32,
+    lineHeight: 18,
   },
   fab: {
     position: 'absolute',
     bottom: 24,
     right: 20,
-    width: 54,
-    height: 54,
-    borderRadius: 27,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
     backgroundColor: colors.primaryContainer,
-    justifyContent: 'center',
     alignItems: 'center',
+    justifyContent: 'center',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
-    elevation: 6,
-    zIndex: 40,
+    shadowOpacity: 0.3,
+    shadowRadius: 4.65,
+    elevation: 8,
   },
 });
