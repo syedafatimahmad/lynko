@@ -24,7 +24,9 @@
       "permissions": [
         "CAMERA",
         "READ_EXTERNAL_STORAGE",
-        "WRITE_EXTERNAL_STORAGE"
+        "WRITE_EXTERNAL_STORAGE",
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION"
       ]
     },
     "web": {
@@ -44,6 +46,12 @@
         "expo-image-picker",
         {
           "photosPermission": "Allow Lynko to access your photo library to attach site photos to Chain of Custody."
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "Allow Lynko to access your location to pick project site addresses on the map."
         }
       ],
       "@react-native-google-signin/google-signin"
