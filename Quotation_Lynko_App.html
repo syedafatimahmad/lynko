@@ -1,0 +1,414 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Quotation - Lynko Field Inspection Suite</title>
+  <style>
+    @page {
+      size: A4;
+      margin: 15mm 15mm 15mm 15mm;
+    }
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, Helvetica, Arial, sans-serif;
+    }
+    body {
+      background-color: #f8fafc;
+      color: #1e293b;
+      font-size: 13px;
+      line-height: 1.5;
+      padding: 20px;
+    }
+    .page-container {
+      max-width: 800px;
+      margin: 0 auto;
+      background: #ffffff;
+      padding: 40px;
+      border-radius: 8px;
+      box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+    }
+    @media print {
+      body {
+        background: #ffffff;
+        padding: 0;
+      }
+      .page-container {
+        box-shadow: none;
+        padding: 0;
+        max-width: 100%;
+      }
+      .no-print {
+        display: none;
+      }
+    }
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      border-bottom: 2px solid #00796B;
+      padding-bottom: 20px;
+      margin-bottom: 25px;
+    }
+    .brand-title {
+      font-size: 28px;
+      font-weight: 900;
+      color: #00796B;
+      letter-spacing: 1px;
+      line-height: 1.1;
+    }
+    .brand-subtitle {
+      font-size: 12px;
+      font-weight: 600;
+      color: #004D40;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-top: 4px;
+    }
+    .quote-badge {
+      text-align: right;
+    }
+    .quote-title {
+      font-size: 24px;
+      font-weight: 800;
+      color: #0f172a;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+    .quote-meta {
+      font-size: 12px;
+      color: #64748b;
+      margin-top: 4px;
+    }
+    .info-grid {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 25px;
+      gap: 20px;
+    }
+    .info-box {
+      flex: 1;
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 6px;
+      padding: 14px 16px;
+    }
+    .info-box-title {
+      font-size: 11px;
+      font-weight: 800;
+      text-transform: uppercase;
+      color: #00796B;
+      letter-spacing: 0.5px;
+      margin-bottom: 8px;
+    }
+    .info-box p {
+      font-size: 12.5px;
+      color: #334155;
+      margin-bottom: 2px;
+    }
+    .section-title {
+      font-size: 15px;
+      font-weight: 800;
+      color: #0f172a;
+      border-left: 4px solid #00796B;
+      padding-left: 10px;
+      margin: 24px 0 12px 0;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-bottom: 20px;
+    }
+    th {
+      background-color: #00796B;
+      color: #ffffff;
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      padding: 10px 12px;
+      text-align: left;
+    }
+    th.text-right, td.text-right {
+      text-align: right;
+    }
+    th.text-center, td.text-center {
+      text-align: center;
+    }
+    td {
+      padding: 10px 12px;
+      border-bottom: 1px solid #e2e8f0;
+      font-size: 12.5px;
+      vertical-align: top;
+    }
+    tr:nth-child(even) td {
+      background-color: #f8fafc;
+    }
+    .item-name {
+      font-weight: 700;
+      color: #0f172a;
+    }
+    .item-desc {
+      font-size: 11.5px;
+      color: #64748b;
+      margin-top: 3px;
+      line-height: 1.4;
+    }
+    .summary-table {
+      width: 320px;
+      margin-left: auto;
+      border: 1px solid #e2e8f0;
+      border-radius: 6px;
+      overflow: hidden;
+      margin-top: 10px;
+      margin-bottom: 25px;
+    }
+    .summary-table td {
+      padding: 8px 14px;
+      font-size: 13px;
+    }
+    .summary-total {
+      background-color: #e6f4f1 !important;
+      font-weight: 800;
+      font-size: 16px !important;
+      color: #00796B;
+      border-top: 2px solid #00796B;
+    }
+    .terms-box {
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 6px;
+      padding: 14px 16px;
+      margin-bottom: 25px;
+    }
+    .terms-box ul {
+      margin-left: 18px;
+      margin-top: 6px;
+    }
+    .terms-box li {
+      font-size: 11.5px;
+      color: #475569;
+      margin-bottom: 4px;
+    }
+    .signatures-row {
+      display: flex;
+      justify-content: space-between;
+      margin-top: 35px;
+      gap: 40px;
+    }
+    .sign-col {
+      flex: 1;
+    }
+    .sign-line {
+      border-bottom: 1px solid #94a3b8;
+      height: 45px;
+      margin-bottom: 6px;
+    }
+    .sign-label {
+      font-size: 11px;
+      font-weight: 700;
+      color: #475569;
+      text-transform: uppercase;
+    }
+    .print-bar {
+      text-align: center;
+      margin-bottom: 20px;
+    }
+    .btn-print {
+      background: #00796B;
+      color: #ffffff;
+      border: none;
+      padding: 10px 24px;
+      font-size: 14px;
+      font-weight: 700;
+      border-radius: 6px;
+      cursor: pointer;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    .btn-print:hover {
+      background: #004D40;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="print-bar no-print">
+    <button class="btn-print" onclick="window.print()">🖨️ Print / Save as PDF</button>
+  </div>
+
+  <div class="page-container">
+    <!-- Header -->
+    <div class="header">
+      <div>
+        <div class="brand-title">LYNKO</div>
+        <div class="brand-subtitle">Environmental Field Software Solutions</div>
+      </div>
+      <div class="quote-badge">
+        <div class="quote-title">Quotation</div>
+        <div class="quote-meta"><strong>Quote #:</strong> LNK-2026-0801</div>
+        <div class="quote-meta"><strong>Date:</strong> August 21, 2026</div>
+        <div class="quote-meta"><strong>Validity:</strong> 30 Days</div>
+      </div>
+    </div>
+
+    <!-- Info Grid -->
+    <div class="info-grid">
+      <div class="info-box">
+        <div class="info-box-title">Prepared For (Client)</div>
+        <p><strong>Client Organization:</strong> Environmental Inspection & Consulting Services</p>
+        <p><strong>Contact Person:</strong> Project Director / Operations Team</p>
+        <p><strong>Location:</strong> Dallas-Fort Worth, TX / United States</p>
+      </div>
+      <div class="info-box">
+        <div class="info-box-title">Service Provider</div>
+        <p><strong>Company:</strong> Lynko Development Team</p>
+        <p><strong>Email:</strong> thelynkoapp@gmail.com / info@lynko.app</p>
+        <p><strong>Platform Support:</strong> Android Native, Cloud Backend & API</p>
+      </div>
+    </div>
+
+    <!-- Core Scope of Work -->
+    <div class="section-title">1. Base Mobile Application Package (Android)</div>
+    <table>
+      <thead>
+        <tr>
+          <th style="width: 55%;">Item & Scope Description</th>
+          <th class="text-center" style="width: 15%;">Platform</th>
+          <th class="text-center" style="width: 10%;">Qty</th>
+          <th class="text-right" style="width: 20%;">Total (USD)</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>
+            <div class="item-name">Lynko Field Inspection & Chain of Custody Native Android App</div>
+            <div class="item-desc">
+              • <strong>Complete Field Suite:</strong> Project & PO job creation, dynamic sample logging, batch counters & cassette inventory management.<br>
+              • <strong>Digital Chain of Custody (EPA Compliant):</strong> Multi-page PDF engine with automatic pagination, dual-signature capture (Sampler & Laboratory Courier), and high-resolution site photo attachments.<br>
+              • <strong>Automated Lab Dispatch:</strong> Instant email composition with verified PDF & photo attachments dispatched to recipient testing laboratories.<br>
+              • <strong>Unified Dashboard:</strong> 3-tier organized project tracking (All, Drafts, Submitted) with built-in instant PDF preview.<br>
+              • <strong>Secure Authentication:</strong> Google Native Play Services 1-tap sign-in & email authentication with Firestore cloud database backup.<br>
+              • <strong>Deliverables:</strong> Standalone Production Android APK ready for direct field installation on all inspector devices.
+            </div>
+          </td>
+          <td class="text-center"><strong>Android</strong></td>
+          <td class="text-center">1</td>
+          <td class="text-right"><strong>$2,000.00</strong></td>
+        </tr>
+      </tbody>
+    </table>
+
+    <!-- Base Total Summary -->
+    <table class="summary-table">
+      <tr>
+        <td><strong>Base Application Subtotal:</strong></td>
+        <td class="text-right"><strong>$2,000.00</strong></td>
+      </tr>
+      <tr class="summary-total">
+        <td>TOTAL BASE CONTRACT:</td>
+        <td class="text-right">$2,000.00</td>
+      </tr>
+    </table>
+
+    <!-- Optional Add-ons Section -->
+    <div class="section-title">2. Optional High-Value Add-Ons & Enhancements</div>
+    <table>
+      <thead>
+        <tr>
+          <th style="width: 55%;">Add-On Module & Description</th>
+          <th class="text-center" style="width: 15%;">Delivery</th>
+          <th class="text-center" style="width: 10%;">Type</th>
+          <th class="text-right" style="width: 20%;">Unit Price (USD)</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>
+            <div class="item-name">🌐 Professional Corporate Website Build</div>
+            <div class="item-desc">
+              Custom responsive website featuring company services, client booking request form, sample drop-off locator, client testimonials, and direct download links for the field app.
+            </div>
+          </td>
+          <td class="text-center">1–2 Weeks</td>
+          <td class="text-center">Optional</td>
+          <td class="text-right"><strong>+$800.00</strong></td>
+        </tr>
+        <tr>
+          <td>
+            <div class="item-name">🍎 iOS Native App Build & Apple App Store Deployment</div>
+            <div class="item-desc">
+              Complete compilation for Apple iOS (iPhone/iPad), Apple Developer Account configuration, TestFlight beta distribution, and official App Store submission.
+            </div>
+          </td>
+          <td class="text-center">1 Week</td>
+          <td class="text-center">Optional</td>
+          <td class="text-right"><strong>+$650.00</strong></td>
+        </tr>
+        <tr>
+          <td>
+            <div class="item-name">🏢 Central Web Admin Portal & Inspector Fleet Dashboard</div>
+            <div class="item-desc">
+              Web-based management console for project managers to assign POs to field inspectors, view incoming submissions in real-time, search archived CoC records, and download consolidated CSV/Excel audit reports.
+            </div>
+          </td>
+          <td class="text-center">2 Weeks</td>
+          <td class="text-center">Optional</td>
+          <td class="text-right"><strong>+$950.00</strong></td>
+        </tr>
+        <tr>
+          <td>
+            <div class="item-name">🔌 Laboratory LIMS Direct API Integration</div>
+            <div class="item-desc">
+              Direct automated JSON/XML API bridge sending sample records directly into laboratory information management systems (e.g., EMSL, Eurofins, SGS, Pace Analytical) bypassing manual email data entry.
+            </div>
+          </td>
+          <td class="text-center">2 Weeks</td>
+          <td class="text-center">Optional</td>
+          <td class="text-right"><strong>+$750.00</strong></td>
+        </tr>
+        <tr>
+          <td>
+            <div class="item-name">🛡️ 12-Month Priority Maintenance & SLA Support</div>
+            <div class="item-desc">
+              Annual package covering operating system updates (Android 15+ / iOS), security patches, cloud database backups, and guaranteed 24-hour bug resolution SLA.
+            </div>
+          </td>
+          <td class="text-center">Annual</td>
+          <td class="text-center">Optional</td>
+          <td class="text-right"><strong>+$500.00 / yr</strong></td>
+        </tr>
+      </tbody>
+    </table>
+
+    <!-- Terms & Conditions -->
+    <div class="section-title">3. Terms & Payment Schedule</div>
+    <div class="terms-box">
+      <ul>
+        <li><strong>Base Contract Price:</strong> $2,000.00 USD (Includes full native Android suite & production APK).</li>
+        <li><strong>Milestone Schedule:</strong> 50% initial deposit upon project agreement; 50% balance upon final testing and delivery.</li>
+        <li><strong>Add-Ons:</strong> Any selected add-ons (Website $800, iOS $650, etc.) will be appended to the scope with separate milestone tracking.</li>
+        <li><strong>Support Period:</strong> Includes 30 days of complimentary post-delivery warranty and bug fixing.</li>
+      </ul>
+    </div>
+
+    <!-- Signatures Approval -->
+    <div class="signatures-row">
+      <div class="sign-col">
+        <div class="sign-line"></div>
+        <div class="sign-label">Prepared By: Lynko Solutions</div>
+        <div class="quote-meta">Date: August 21, 2026</div>
+      </div>
+      <div class="sign-col">
+        <div class="sign-line"></div>
+        <div class="sign-label">Accepted & Approved By (Client)</div>
+        <div class="quote-meta">Date: ____________________</div>
+      </div>
+    </div>
+  </div>
+
+</body>
+</html>
