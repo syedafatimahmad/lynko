@@ -45,7 +45,8 @@
         {
           "photosPermission": "Allow Lynko to access your photo library to attach site photos to Chain of Custody."
         }
-      ]
+      ],
+      "@react-native-google-signin/google-signin"
     ],
     "extra": {
       "eas": {

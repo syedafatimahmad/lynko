@@ -14,8 +14,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import * as WebBrowser from 'expo-web-browser';
-import * as Google from 'expo-auth-session/providers/google';
+import { GoogleSignin, statusCodes } from '@react-native-google-signin/google-signin';
 import { 
   signUpWithEmail, 
   signInWithEmail, 
@@ -31,7 +30,16 @@ import { useLynkoStore } from '../store/lynkoStore';
 import { colors } from '../theme/colors';
 import { auth } from '../config/firebase';
 
-WebBrowser.maybeCompleteAuthSession();
+if (Platform.OS !== 'web') {
+  try {
+    GoogleSignin.configure({
+      webClientId: '429476843085-69p861nle0eqn9r8mbl2n5d5l9kpia7r.apps.googleusercontent.com',
+      offlineAccess: false,
+    });
+  } catch (e) {
+    console.warn('GoogleSignin configure notice:', e);
+  }
+}
 
 export default function SignInScreen() {
   const [isRegistering, setIsRegistering] = useState(false);
@@ -199,36 +207,6 @@ export default function SignInScreen() {
     }
   };
 
-  const [request, response, promptAsync] = Google.useAuthRequest({
-    androidClientId: '429476843085-tcr64sski33n7l7dgk7vdq88smvkdb3t.apps.googleusercontent.com',
-    webClientId: '429476843085-69p861nle0eqn9r8mbl2n5d5l9kpia7r.apps.googleusercontent.com',
-    clientId: '429476843085-69p861nle0eqn9r8mbl2n5d5l9kpia7r.apps.googleusercontent.com',
-  });
-
-  React.useEffect(() => {
-    if (response?.type === 'success') {
-      const idToken = response.params?.id_token || response.authentication?.idToken;
-      const accessToken = response.params?.access_token || response.authentication?.accessToken;
-      
-      if (idToken || accessToken) {
-        setLoading(true);
-        signInWithGoogleCredential(idToken, accessToken)
-          .then(async ({ user, profile }) => {
-            setUser(user);
-            setUserData(profile);
-            await syncFromFirestore();
-          })
-          .catch((err) => {
-            const parsed = mapAuthError(err);
-            setError(parsed.message);
-          })
-          .finally(() => {
-            setLoading(false);
-          });
-      }
-    }
-  }, [response]);
-
   const handleGoogleAuth = async () => {
     setLoading(true);
     setError('');
@@ -250,10 +228,32 @@ export default function SignInScreen() {
       }
     } else {
       try {
-        await promptAsync();
+        await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
+        const response = await GoogleSignin.signIn();
+        
+        // Retrieve ID token from response (compatible with both SDK schema versions)
+        const idToken = (response as any)?.data?.idToken || (response as any)?.idToken;
+        
+        if (idToken) {
+          const { user, profile } = await signInWithGoogleCredential(idToken);
+          setUser(user);
+          setUserData(profile);
+          await syncFromFirestore();
+        } else {
+          setError('Google authentication did not return a valid credentials token.');
+        }
       } catch (err: any) {
-        console.error('Google Auth Prompt Error:', err);
-        setError('Could not initialize Google authentication session.');
+        console.error('Google Native Sign-In Error:', err);
+        if (err.code === statusCodes.SIGN_IN_CANCELLED) {
+          // User dismissed dialog
+        } else if (err.code === statusCodes.IN_PROGRESS) {
+          // Sign in is in progress already
+        } else if (err.code === statusCodes.PLAY_SERVICES_NOT_AVAILABLE) {
+          setError('Google Play Services is not available or outdated.');
+        } else {
+          const parsed = mapAuthError(err);
+          setError(parsed.message || 'Google Sign-In failed. Please sign in with email and password.');
+        }
       } finally {
         setLoading(false);
       }
