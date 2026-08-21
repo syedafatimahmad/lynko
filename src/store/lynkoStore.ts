@@ -76,6 +76,7 @@ export interface CoCData {
   turnaround1?: string;
   analysis2?: string;
   turnaround2?: string;
+  attachPhotosToEmail?: boolean;
 }
 
 interface LynkoState {
@@ -121,6 +122,7 @@ const initialCoCData: CoCData = {
   turnaround1: 'Next-day rush',
   analysis2: 'Not set',
   turnaround2: '',
+  attachPhotosToEmail: true,
 };
 
 const defaultRecipients = ['thelynkoapp@gmail.com', 'info@lynko.app'];

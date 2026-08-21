@@ -18,6 +18,8 @@ import { useLynkoStore } from '../store/lynkoStore';
 import { colors } from '../theme/colors';
 import { generatePDF } from '../utils/pdfGenerator';
 import SignatureModal from '../components/SignatureModal';
+import ImageEditorModal from '../components/ImageEditorModal';
+import MapAddressPickerModal from '../components/MapAddressPickerModal';
 import { Ionicons } from '@expo/vector-icons';
 import * as Print from 'expo-print';
 import { formatPhoneNumber, formatZipCode, formatPONumber } from '../utils/formatters';
@@ -27,6 +29,9 @@ export default function ChainOfCustodyScreen({ navigation }: any) {
   const updateCoCData = useLynkoStore((state) => state.updateCoCData);
   const samples = useLynkoStore((state) => state.samples);
   const [showSignature, setShowSignature] = useState(false);
+  const [showMapPicker, setShowMapPicker] = useState(false);
+  const [showImageEditor, setShowImageEditor] = useState(false);
+  const [editingPhotoIndex, setEditingPhotoIndex] = useState<number | null>(null);
   const [saveTemplate, setSaveTemplate] = useState(false);
   const [tosAgreed, setTosAgreed] = useState(false);
   const [isEditingContacts, setIsEditingContacts] = useState(false);
@@ -59,15 +64,12 @@ export default function ChainOfCustodyScreen({ navigation }: any) {
     }
 
     const result = await ImagePicker.launchCameraAsync({
-      allowsEditing: true,
-      quality: 0.5,
-      base64: true,
+      allowsEditing: false,
+      quality: 0.8,
     });
 
     if (!result.canceled && result.assets[0]) {
-      const asset = result.assets[0];
-      const dataUri = asset.base64 ? `data:image/jpeg;base64,${asset.base64}` : asset.uri;
-      updateCoCData({ photos: [...photos, dataUri] });
+      updateCoCData({ photos: [...photos, result.assets[0].uri] });
     }
   };
 
@@ -80,12 +82,11 @@ export default function ChainOfCustodyScreen({ navigation }: any) {
 
     const result = await ImagePicker.launchImageLibraryAsync({
       allowsMultipleSelection: true,
-      quality: 0.5,
-      base64: true,
+      quality: 0.8,
     });
 
     if (!result.canceled && result.assets.length > 0) {
-      const newUris = result.assets.map(a => (a.base64 ? `data:image/jpeg;base64,${a.base64}` : a.uri));
+      const newUris = result.assets.map(a => a.uri);
       updateCoCData({ photos: [...photos, ...newUris] });
     }
   };
@@ -93,6 +94,21 @@ export default function ChainOfCustodyScreen({ navigation }: any) {
   const handleRemovePhoto = (index: number) => {
     const updated = photos.filter((_, i) => i !== index);
     updateCoCData({ photos: updated });
+  };
+
+  const handleOpenPhotoEditor = (index: number) => {
+    setEditingPhotoIndex(index);
+    setShowImageEditor(true);
+  };
+
+  const handleSaveEditedPhoto = (editedUri: string) => {
+    if (editingPhotoIndex !== null && editingPhotoIndex >= 0) {
+      const updated = [...photos];
+      updated[editingPhotoIndex] = editedUri;
+      updateCoCData({ photos: updated });
+    }
+    setShowImageEditor(false);
+    setEditingPhotoIndex(null);
   };
 
   const handlePreviewCoC = async () => {
@@ -267,7 +283,16 @@ export default function ChainOfCustodyScreen({ navigation }: any) {
                 />
               </View>
               <View style={styles.inputGroup}>
-                <Text style={styles.label}>ADDRESS</Text>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                  <Text style={styles.label}>ADDRESS / LOCATION</Text>
+                  <TouchableOpacity 
+                    style={{ flexDirection: 'row', alignItems: 'center' }} 
+                    onPress={() => setShowMapPicker(true)}
+                  >
+                    <Ionicons name="map-outline" size={15} color={colors.primaryContainer} style={{ marginRight: 3 }} />
+                    <Text style={{ fontSize: 12, fontWeight: '700', color: colors.primaryContainer }}>Pick on Map</Text>
+                  </TouchableOpacity>
+                </View>
                 <TextInput
                   style={styles.input}
                   value={cocData.contactAddress}
@@ -341,8 +366,16 @@ export default function ChainOfCustodyScreen({ navigation }: any) {
           {photos.length > 0 ? (
             <View style={styles.photoGrid}>
               {photos.map((uri, index) => (
-                <View key={index} style={styles.photoThumbWrapper}>
+                <TouchableOpacity 
+                  key={index} 
+                  style={styles.photoThumbWrapper}
+                  onPress={() => handleOpenPhotoEditor(index)}
+                  activeOpacity={0.85}
+                >
                   <Image source={{ uri }} style={styles.photoThumbnail} resizeMode="cover" />
+                  <View style={{ position: 'absolute', top: 3, left: 3, backgroundColor: 'rgba(13, 148, 136, 0.85)', paddingHorizontal: 5, paddingVertical: 2, borderRadius: 4 }}>
+                    <Ionicons name="pencil" size={10} color="#fff" />
+                  </View>
                   <TouchableOpacity 
                     style={styles.photoDeleteBtn} 
                     hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
@@ -352,7 +385,7 @@ export default function ChainOfCustodyScreen({ navigation }: any) {
                     <Ionicons name="close" size={14} color="#fff" />
                   </TouchableOpacity>
                   <Text style={styles.photoBadge}>#{index + 1}</Text>
-                </View>
+                </TouchableOpacity>
               ))}
             </View>
           ) : (
@@ -479,6 +512,30 @@ export default function ChainOfCustodyScreen({ navigation }: any) {
           visible={showSignature}
           onOK={handleSaveSignature}
           onCancel={() => setShowSignature(false)}
+        />
+      )}
+
+      {showMapPicker && (
+        <MapAddressPickerModal
+          visible={showMapPicker}
+          initialAddress={cocData.contactAddress}
+          onConfirm={(address, zip) => {
+            updateCoCData({ contactAddress: address, zipCode: zip });
+            setShowMapPicker(false);
+          }}
+          onCancel={() => setShowMapPicker(false)}
+        />
+      )}
+
+      {showImageEditor && editingPhotoIndex !== null && photos[editingPhotoIndex] && (
+        <ImageEditorModal
+          visible={showImageEditor}
+          imageUri={photos[editingPhotoIndex]}
+          onSave={handleSaveEditedPhoto}
+          onCancel={() => {
+            setShowImageEditor(false);
+            setEditingPhotoIndex(null);
+          }}
         />
       )}
     </SafeAreaView>

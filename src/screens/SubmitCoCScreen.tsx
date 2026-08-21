@@ -9,6 +9,7 @@ import {
   ActivityIndicator,
   Alert,
   Platform,
+  Switch,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -23,6 +24,7 @@ import { generatePDF } from '../utils/pdfGenerator';
 export default function SubmitCoCScreen({ route, navigation }: any) {
   const user = useAuthStore((state) => state.user);
   const cocData = useLynkoStore((state) => state.cocData);
+  const updateCoCData = useLynkoStore((state) => state.updateCoCData);
   const samples = useLynkoStore((state) => state.samples);
   const recipientHistory = useLynkoStore((state) => state.recipientHistory);
   const addRecipientEmail = useLynkoStore((state) => state.addRecipientEmail);
@@ -62,8 +64,9 @@ export default function SubmitCoCScreen({ route, navigation }: any) {
         return;
       }
 
-      // 1. Dispatch Email via MailComposer with PDF and all attached site photos
-      const photoAttachments = (cocData.photos || []).filter(p => !!p);
+      // 1. Check Toggle: Attach photos only if user has attachPhotosToEmail enabled
+      const attachPhotos = cocData.attachPhotosToEmail !== false;
+      const photoAttachments = attachPhotos ? (cocData.photos || []).filter(p => !!p) : [];
       const allAttachments = [pdfUri, ...photoAttachments];
 
       const isAvailable = await MailComposer.isAvailableAsync();
@@ -207,7 +210,26 @@ export default function SubmitCoCScreen({ route, navigation }: any) {
           />
         </View>
 
-        {/* Card 4: Attachment Preview Badge */}
+        {/* Card 4: Email Photo Attachment Toggle */}
+        <View style={styles.card}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+            <View style={{ flex: 1, paddingRight: 12 }}>
+              <Text style={{ fontSize: 14, fontWeight: '700', color: colors.onSurface }}>Attach Site Photos to Email</Text>
+              <Text style={{ fontSize: 12, color: colors.secondary, marginTop: 2 }}>
+                {cocData.attachPhotosToEmail !== false
+                  ? `Includes ${(cocData.photos || []).length} photo(s) as standalone email attachments.`
+                  : 'Photos excluded from email (remains saved in local project data).'}
+              </Text>
+            </View>
+            <Switch
+              value={cocData.attachPhotosToEmail !== false}
+              onValueChange={(val: boolean) => updateCoCData({ attachPhotosToEmail: val })}
+              trackColor={{ true: colors.primaryContainer, false: '#CBD5E1' }}
+            />
+          </View>
+        </View>
+
+        {/* Card 5: Attachment Preview Badge */}
         <View style={styles.attachmentCard}>
           <View style={styles.attachmentInfo}>
             <Ionicons name="document-text" size={28} color={colors.primaryContainer} />

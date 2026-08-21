@@ -5,6 +5,8 @@ import { useLynkoStore } from '../store/lynkoStore';
 import { colors } from '../theme/colors';
 import { Ionicons } from '@expo/vector-icons';
 
+import MapAddressPickerModal from '../components/MapAddressPickerModal';
+
 export default function NewProjectScreen({ navigation }: any) {
   const addProject = useLynkoStore((state) => state.addProject);
   
@@ -13,6 +15,7 @@ export default function NewProjectScreen({ navigation }: any) {
   const [address, setAddress] = useState('');
   const [zip, setZip] = useState('');
   const [desc, setDesc] = useState('');
+  const [showMapPicker, setShowMapPicker] = useState(false);
 
   const handleSave = () => {
     if (!po || !title) return;
@@ -66,7 +69,16 @@ export default function NewProjectScreen({ navigation }: any) {
         </View>
 
         <View style={styles.inputGroup}>
-          <Text style={styles.label}>Address</Text>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+            <Text style={styles.label}>Site Address</Text>
+            <TouchableOpacity 
+              style={{ flexDirection: 'row', alignItems: 'center' }} 
+              onPress={() => setShowMapPicker(true)}
+            >
+              <Ionicons name="map-outline" size={15} color={colors.primaryContainer} style={{ marginRight: 3 }} />
+              <Text style={{ fontSize: 12, fontWeight: '700', color: colors.primaryContainer }}>Pick on Map</Text>
+            </TouchableOpacity>
+          </View>
           <TextInput 
             style={styles.input} 
             placeholder="e.g. 539 W Commerce St" 
@@ -108,6 +120,19 @@ export default function NewProjectScreen({ navigation }: any) {
           <Text style={[styles.buttonText, { color: colors.secondary }]}>Cancel</Text>
         </TouchableOpacity>
       </ScrollView>
+
+      {showMapPicker && (
+        <MapAddressPickerModal
+          visible={showMapPicker}
+          initialAddress={address}
+          onConfirm={(selectedAddress, selectedZip) => {
+            setAddress(selectedAddress);
+            setZip(selectedZip);
+            setShowMapPicker(false);
+          }}
+          onCancel={() => setShowMapPicker(false)}
+        />
+      )}
     </SafeAreaView>
   );
 }
