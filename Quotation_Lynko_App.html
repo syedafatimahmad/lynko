@@ -3,11 +3,11 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Quotation - Lynko Field Inspection Suite</title>
+  <title>Commercial Quotation & Detailed Specification - Lynko Field Suite</title>
   <style>
     @page {
       size: A4;
-      margin: 12mm 15mm 12mm 15mm;
+      margin: 12mm 14mm 12mm 14mm;
     }
     * {
       box-sizing: border-box;
@@ -16,17 +16,17 @@
       font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, Helvetica, Arial, sans-serif;
     }
     body {
-      background-color: #f8fafc;
-      color: #1e293b;
-      font-size: 12.5px;
+      background-color: #f1f5f9;
+      color: #0f172a;
+      font-size: 11.5px;
       line-height: 1.45;
       padding: 20px;
     }
     .page-container {
-      max-width: 800px;
+      max-width: 820px;
       margin: 0 auto;
       background: #ffffff;
-      padding: 35px 40px;
+      padding: 32px 36px;
       border-radius: 8px;
       box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
     }
@@ -43,25 +43,28 @@
       .no-print {
         display: none;
       }
+      .page-break {
+        page-break-before: always;
+      }
     }
     .header {
       display: flex;
       justify-content: space-between;
       align-items: flex-start;
-      border-bottom: 2px solid #00796B;
-      padding-bottom: 16px;
-      margin-bottom: 20px;
+      border-bottom: 2.5px solid #00796B;
+      padding-bottom: 14px;
+      margin-bottom: 18px;
     }
     .brand-title {
-      font-size: 26px;
+      font-size: 24px;
       font-weight: 900;
       color: #00796B;
       letter-spacing: 1px;
       line-height: 1.1;
     }
     .brand-subtitle {
-      font-size: 11.5px;
-      font-weight: 600;
+      font-size: 10.5px;
+      font-weight: 700;
       color: #004D40;
       text-transform: uppercase;
       letter-spacing: 0.5px;
@@ -71,50 +74,50 @@
       text-align: right;
     }
     .quote-title {
-      font-size: 22px;
+      font-size: 20px;
       font-weight: 800;
       color: #0f172a;
       text-transform: uppercase;
       letter-spacing: 1px;
     }
     .quote-meta {
-      font-size: 11.5px;
+      font-size: 11px;
       color: #64748b;
-      margin-top: 3px;
+      margin-top: 2px;
     }
     .info-grid {
       display: flex;
       justify-content: space-between;
-      margin-bottom: 20px;
-      gap: 16px;
+      margin-bottom: 18px;
+      gap: 14px;
     }
     .info-box {
       flex: 1;
       background: #f8fafc;
       border: 1px solid #e2e8f0;
       border-radius: 6px;
-      padding: 12px 14px;
+      padding: 10px 12px;
     }
     .info-box-title {
-      font-size: 10.5px;
+      font-size: 10px;
       font-weight: 800;
       text-transform: uppercase;
       color: #00796B;
       letter-spacing: 0.5px;
-      margin-bottom: 6px;
+      margin-bottom: 5px;
     }
     .info-box p {
-      font-size: 12px;
+      font-size: 11px;
       color: #334155;
       margin-bottom: 2px;
     }
     .section-title {
-      font-size: 14px;
+      font-size: 13px;
       font-weight: 800;
       color: #0f172a;
       border-left: 4px solid #00796B;
-      padding-left: 9px;
-      margin: 18px 0 10px 0;
+      padding-left: 8px;
+      margin: 16px 0 8px 0;
       text-transform: uppercase;
       letter-spacing: 0.5px;
     }
@@ -126,11 +129,11 @@
     th {
       background-color: #00796B;
       color: #ffffff;
-      font-size: 11px;
+      font-size: 10.5px;
       font-weight: 700;
       text-transform: uppercase;
       letter-spacing: 0.5px;
-      padding: 8px 10px;
+      padding: 7px 9px;
       text-align: left;
     }
     th.text-right, td.text-right {
@@ -140,9 +143,9 @@
       text-align: center;
     }
     td {
-      padding: 8px 10px;
+      padding: 7px 9px;
       border-bottom: 1px solid #e2e8f0;
-      font-size: 11.5px;
+      font-size: 11px;
       vertical-align: top;
     }
     tr:nth-child(even) td {
@@ -151,12 +154,36 @@
     .item-name {
       font-weight: 700;
       color: #0f172a;
+      font-size: 11.5px;
     }
     .item-desc {
-      font-size: 10.8px;
-      color: #64748b;
+      font-size: 10.5px;
+      color: #475569;
       margin-top: 2px;
       line-height: 1.35;
+    }
+    .feature-card {
+      background: #ffffff;
+      border: 1px solid #e2e8f0;
+      border-radius: 6px;
+      padding: 10px 12px;
+      margin-bottom: 10px;
+    }
+    .feature-card-header {
+      font-weight: 800;
+      color: #00796B;
+      font-size: 11.5px;
+      margin-bottom: 4px;
+      display: flex;
+      align-items: center;
+    }
+    .feature-card ul {
+      margin-left: 18px;
+    }
+    .feature-card li {
+      font-size: 10.8px;
+      color: #334155;
+      margin-bottom: 2.5px;
     }
     .summary-table {
       width: 320px;
@@ -164,17 +191,17 @@
       border: 1px solid #e2e8f0;
       border-radius: 6px;
       overflow: hidden;
-      margin-top: 6px;
-      margin-bottom: 18px;
+      margin-top: 8px;
+      margin-bottom: 16px;
     }
     .summary-table td {
       padding: 6px 12px;
-      font-size: 12px;
+      font-size: 11.5px;
     }
     .summary-total {
       background-color: #e6f4f1 !important;
       font-weight: 800;
-      font-size: 14.5px !important;
+      font-size: 14px !important;
       color: #00796B;
       border-top: 2px solid #00796B;
     }
@@ -182,22 +209,23 @@
       background: #f8fafc;
       border: 1px solid #e2e8f0;
       border-radius: 6px;
-      padding: 10px 14px;
+      padding: 10px 12px;
+      margin-top: 10px;
       margin-bottom: 18px;
     }
     .terms-box ul {
       margin-left: 16px;
-      margin-top: 4px;
+      margin-top: 3px;
     }
     .terms-box li {
-      font-size: 11px;
+      font-size: 10.5px;
       color: #475569;
-      margin-bottom: 3px;
+      margin-bottom: 2.5px;
     }
     .signatures-row {
       display: flex;
       justify-content: space-between;
-      margin-top: 25px;
+      margin-top: 20px;
       gap: 30px;
     }
     .sign-col {
@@ -205,25 +233,25 @@
     }
     .sign-line {
       border-bottom: 1px solid #94a3b8;
-      height: 38px;
-      margin-bottom: 5px;
+      height: 35px;
+      margin-bottom: 4px;
     }
     .sign-label {
-      font-size: 10.5px;
+      font-size: 10px;
       font-weight: 700;
       color: #475569;
       text-transform: uppercase;
     }
     .print-bar {
       text-align: center;
-      margin-bottom: 18px;
+      margin-bottom: 16px;
     }
     .btn-print {
       background: #00796B;
       color: #ffffff;
       border: none;
-      padding: 9px 22px;
-      font-size: 13.5px;
+      padding: 8px 20px;
+      font-size: 13px;
       font-weight: 700;
       border-radius: 6px;
       cursor: pointer;
@@ -248,7 +276,7 @@
         <div class="brand-subtitle">Environmental Field Software Solutions</div>
       </div>
       <div class="quote-badge">
-        <div class="quote-title">Quotation</div>
+        <div class="quote-title">Commercial Quotation</div>
         <div class="quote-meta"><strong>Quote #:</strong> LNK-2026-0801</div>
         <div class="quote-meta"><strong>Date:</strong> August 21, 2026</div>
         <div class="quote-meta"><strong>Validity:</strong> 30 Days</div>
@@ -267,17 +295,17 @@
         <div class="info-box-title">Service Provider</div>
         <p><strong>Prepared By:</strong> Syeda Fatimah (Lead Solution Architect)</p>
         <p><strong>Email:</strong> thelynkoapp@gmail.com / info@lynko.app</p>
-        <p><strong>Platform Support:</strong> Android Native, Cloud Backend & API</p>
+        <p><strong>Platform:</strong> Standalone Production Native Android App (APK)</p>
       </div>
     </div>
 
-    <!-- Core Scope of Work - Itemized Base Package -->
-    <div class="section-title">1. Base Mobile Application Package (Android) — $2,000.00 USD</div>
+    <!-- Pricing Summary Table -->
+    <div class="section-title">1. Investment Summary & Milestone Deliverables</div>
     <table>
       <thead>
         <tr>
-          <th style="width: 58%;">Milestone / Section Description</th>
-          <th class="text-center" style="width: 14%;">Platform</th>
+          <th style="width: 60%;">Milestone Deliverable / Engineering Layer</th>
+          <th class="text-center" style="width: 12%;">Platform</th>
           <th class="text-center" style="width: 10%;">Stage</th>
           <th class="text-right" style="width: 18%;">Amount (USD)</th>
         </tr>
@@ -285,12 +313,8 @@
       <tbody>
         <tr>
           <td>
-            <div class="item-name">🎨 Section A: UI/UX Design & Field Ergonomics Architecture</div>
-            <div class="item-desc">
-              • High-fidelity mobile interface designs optimized for outdoor high-glare environments.<br>
-              • Streamlined single-screen workflow for rapid sample collection & batch counter steppers.<br>
-              • Smooth signature canvas modal & unified 3-tab project manager (All, Drafts, Submitted).
-            </div>
+            <div class="item-name">🎨 Section A: UI/UX Design & High-Glare Field Ergonomics</div>
+            <div class="item-desc">Interactive mobile wireframes, outdoor high-contrast field typography, unified 3-tab layout, and digital signature modal.</div>
           </td>
           <td class="text-center">Android</td>
           <td class="text-center">Milestone 1</td>
@@ -298,12 +322,8 @@
         </tr>
         <tr>
           <td>
-            <div class="item-name">📱 Section B: Core Mobile Application & Native Android Engine</div>
-            <div class="item-desc">
-              • Complete project & PO management suite with sample matrix & cassette media logging.<br>
-              • Camera & photo picker integration for high-resolution site photo attachments.<br>
-              • Native Google Play Services 1-tap account authentication & offline-resilient local store.
-            </div>
+            <div class="item-name">📱 Section B: Native Android Application Core & Media Engine</div>
+            <div class="item-desc">PO management suite, cassette inventory steppers, high-resolution camera photo attachments, and Google Play Services OAuth.</div>
           </td>
           <td class="text-center">Android</td>
           <td class="text-center">Milestone 2</td>
@@ -311,11 +331,8 @@
         </tr>
         <tr>
           <td>
-            <div class="item-name">📄 Section C: EPA Digital Chain of Custody & PDF Generator</div>
-            <div class="item-desc">
-              • EPA & NVLAP laboratory compliant dynamic multi-page PDF generation engine.<br>
-              • Automatic pagination, dual-signature binding (Sampler & Courier), and in-app instant preview.
-            </div>
+            <div class="item-name">📄 Section C: Dynamic EPA Multi-Page PDF Compilation Engine</div>
+            <div class="item-desc">EPA/NVLAP compliant PDF generator with auto-pagination, dual digital signature binding, and instant in-app preview.</div>
           </td>
           <td class="text-center">Android</td>
           <td class="text-center">Milestone 3</td>
@@ -324,10 +341,7 @@
         <tr>
           <td>
             <div class="item-name">☁️ Section D: Cloud Database Sync & Automated Lab Dispatch</div>
-            <div class="item-desc">
-              • Google Firebase Firestore cloud sync with encrypted user archive backup.<br>
-              • Automated email dispatch bundling signed PDF and all site photos directly to testing labs.
-            </div>
+            <div class="item-desc">Google Firebase Firestore real-time cloud sync, persistent offline local cache, and verified laboratory email dispatcher.</div>
           </td>
           <td class="text-center">Android</td>
           <td class="text-center">Milestone 4</td>
@@ -336,100 +350,107 @@
       </tbody>
     </table>
 
-    <!-- Base Total Summary -->
+    <!-- Total Contract Summary -->
     <table class="summary-table">
       <tr>
         <td><strong>UI/UX Design Subtotal:</strong></td>
         <td class="text-right">$500.00</td>
       </tr>
       <tr>
-        <td><strong>Engineering & Cloud Subtotal:</strong></td>
-        <td class="text-right">$1,500.00</td>
+        <td><strong>Mobile Engineering & PDF Subtotal:</strong></td>
+        <td class="text-right">$1,250.00</td>
+      </tr>
+      <tr>
+        <td><strong>Cloud Sync & Dispatch Subtotal:</strong></td>
+        <td class="text-right">$250.00</td>
       </tr>
       <tr class="summary-total">
-        <td>TOTAL BASE CONTRACT:</td>
+        <td>TOTAL CONTRACT VALUE:</td>
         <td class="text-right">$2,000.00</td>
       </tr>
     </table>
 
-    <!-- Optional Add-ons Section -->
-    <div class="section-title">2. Optional High-Value Add-Ons & Enhancements</div>
-    <table>
-      <thead>
-        <tr>
-          <th style="width: 58%;">Add-On Module & Description</th>
-          <th class="text-center" style="width: 14%;">Delivery</th>
-          <th class="text-center" style="width: 10%;">Type</th>
-          <th class="text-right" style="width: 18%;">Price (USD)</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr>
-          <td>
-            <div class="item-name">🌐 Professional Corporate Website Build</div>
-            <div class="item-desc">
-              Custom responsive website showcasing environmental testing services, client booking request form, sample drop-off locator, client testimonials, and direct field app download links.
-            </div>
-          </td>
-          <td class="text-center">1–2 Weeks</td>
-          <td class="text-center">Optional</td>
-          <td class="text-right"><strong>+$800.00</strong></td>
-        </tr>
-        <tr>
-          <td>
-            <div class="item-name">🏢 Central CRM & Inspector Admin Dashboard</div>
-            <div class="item-desc">
-              Web-based management console to assign POs to field inspectors, manage client accounts, monitor incoming submissions in real-time, search archived CoC records, and export CSV/Excel audit reports.
-            </div>
-          </td>
-          <td class="text-center">1 Week</td>
-          <td class="text-center">Optional</td>
-          <td class="text-right"><strong>+$200.00</strong></td>
-        </tr>
-        <tr>
-          <td>
-            <div class="item-name">🍎 iOS Native App Build & Apple App Store Deployment</div>
-            <div class="item-desc">
-              Full compilation for Apple iOS (iPhone/iPad), Apple Developer account setup, TestFlight beta distribution, and official App Store submission.
-            </div>
-          </td>
-          <td class="text-center">1 Week</td>
-          <td class="text-center">Optional</td>
-          <td class="text-right"><strong>+$500.00</strong></td>
-        </tr>
-        <tr>
-          <td>
-            <div class="item-name">🔌 Laboratory LIMS Direct API Integration</div>
-            <div class="item-desc">
-              Direct automated JSON/XML API bridge sending sample records directly into laboratory information management systems (e.g., EMSL, Eurofins, SGS, Pace Analytical).
-            </div>
-          </td>
-          <td class="text-center">2 Weeks</td>
-          <td class="text-center">Optional</td>
-          <td class="text-right"><strong>+$750.00</strong></td>
-        </tr>
-        <tr>
-          <td>
-            <div class="item-name">🛡️ 12-Month Priority Maintenance & SLA Support</div>
-            <div class="item-desc">
-              Annual package covering operating system updates (Android 15+ / iOS), security patches, cloud database backups, and guaranteed 24-hour bug resolution SLA.
-            </div>
-          </td>
-          <td class="text-center">Annual</td>
-          <td class="text-center">Optional</td>
-          <td class="text-right"><strong>+$500.00 / yr</strong></td>
-        </tr>
-      </tbody>
-    </table>
+    <!-- Detailed Feature & Integration Specification -->
+    <div class="section-title">2. Granular Feature & Native Integration Specification</div>
 
-    <!-- Terms & Conditions -->
-    <div class="section-title">3. Terms & Payment Schedule</div>
+    <!-- Module 1 -->
+    <div class="feature-card">
+      <div class="feature-card-header">🔐 Module 1: Authentication & Account Management</div>
+      <ul>
+        <li><strong>Native Google Play Services Integration:</strong> 1-tap sign-in powered by official Google Play Services SDK (<code>@react-native-google-signin/google-signin</code>) with zero browser redirect latency.</li>
+        <li><strong>Native Account Chooser Modal:</strong> Automatic session clearance to present the full Google Account Picker bottom-sheet, allowing inspectors to select any device account or add new credentials.</li>
+        <li><strong>Email / Password Authentication:</strong> Direct Firebase Auth engine with automatic account creation, password reset workflows, and secure session management.</li>
+        <li><strong>Automated Email Verification:</strong> Dedicated verification dispatch and delivery tracking via custom SMTP integration (<code>thelynkoapp@gmail.com</code>).</li>
+        <li><strong>Persistent Local Auth Session:</strong> Encrypted token storage with <code>AsyncStorage</code> for instant app cold-starts without re-login requirements.</li>
+      </ul>
+    </div>
+
+    <!-- Module 2 -->
+    <div class="feature-card">
+      <div class="feature-card-header">📂 Module 2: Projects & Inspection Lifecycle Dashboard</div>
+      <ul>
+        <li><strong>Unified 3-Tab Architecture:</strong> Clean segregation between <code>All</code>, <code>Drafts</code> (in-progress field jobs), and <code>Submitted</code> (finalized & sent to lab) inspection records.</li>
+        <li><strong>Instant Search Engine:</strong> Real-time filtering across PO numbers, project titles, physical site addresses, descriptions, and sampling dates.</li>
+        <li><strong>Status Visual Badging:</strong> High-visibility badges clearly distinguishing active field drafts from finalized lab submissions.</li>
+        <li><strong>One-Tap PDF Viewer:</strong> Direct access to view and print the official signed Chain of Custody PDF directly from any project card.</li>
+        <li><strong>Safe Record Management:</strong> Touch-optimized deletion with safety confirmation dialogs and automatic Firestore synchronization.</li>
+      </ul>
+    </div>
+
+    <!-- Module 3 -->
+    <div class="feature-card">
+      <div class="feature-card-header">🧪 Module 3: EPA Digital Chain of Custody & Sample Matrix</div>
+      <ul>
+        <li><strong>9 Specialized Media Media Presets:</strong> Pre-configured tracking for Asbestos PCM Cassettes, Asbestos TEM, Bulk Samples (Drywall, Tile, Mastic), Endotoxin, Polycarbonate Air Filters, PTFE Membrane Filters, Spore Trap Cassettes (Air-O-Cell), Surface Tape Slides, and Viable Via-Cell Cassettes.</li>
+        <li><strong>Batch Stepper Counter:</strong> Interactive <code>SampleTypesScreen</code> stepper allowing inspectors to tap <code>+</code>/<code>-</code> on physical cassettes in their field kit to auto-generate sample rows.</li>
+        <li><strong>Dual-Tier Analysis & Turnaround Management:</strong> Global analysis configuration (e.g. <code>Asbestos PLM</code>, <code>TEM Analysis</code>) and rush turnaround selection (e.g. <code>Next-day rush</code>, <code>2-Hour Emergency</code>).</li>
+        <li><strong>Granular Sample Fields:</strong> Sample ID, Room / Location Description, Material Property, Flow Volume Measurement & Units (<code>L</code>, <code>pc</code>, <code>in²</code>), and individual Analysis 1 & 2 toggles.</li>
+        <li><strong>Batch Auto-Fill Productivity Suite:</strong> 1-tap sequential re-numbering (<code>1, 2, 3...</code>), mass area description population, and measurement auto-fill.</li>
+      </ul>
+    </div>
+
+    <!-- Module 4 -->
+    <div class="feature-card">
+      <div class="feature-card-header">📷 Module 4: Hardware Camera & High-Resolution Photo Engine</div>
+      <ul>
+        <li><strong>Native Camera Capture:</strong> Direct hardware integration via <code>expo-camera</code> to capture timestamped site conditions.</li>
+        <li><strong>Photo Library Integration:</strong> Multi-photo selector via <code>expo-image-picker</code> for attaching existing building inspection photos.</li>
+        <li><strong>Photo Grid Management:</strong> Visual thumbnail gallery with numbered badges (<code>#1</code>, <code>#2</code>...) and large touch-target removal controls.</li>
+        <li><strong>Full-Resolution Lab Attachment:</strong> Automatically bundles all site photos alongside the official PDF document during email lab submission.</li>
+      </ul>
+    </div>
+
+    <!-- Module 5 -->
+    <div class="feature-card">
+      <div class="feature-card-header">✍️ Module 5: Digital Signature Capture & EPA PDF Engine</div>
+      <ul>
+        <li><strong>Vector Signature Canvas:</strong> In-app touch/stylus signature modal (<code>react-native-signature-canvas</code>) with instant clearing and base64 export.</li>
+        <li><strong>Dual Legal Signatures:</strong> Dedicated capture and binding for both <em>Relinquished By (Field Sampler)</em> and <em>Received By (Laboratory Courier)</em>.</li>
+        <li><strong>Multi-Page Vector PDF Compilation:</strong> Client-side PDF engine (<code>expo-print</code>) rendering strict EPA/NVLAP laboratory grid tables.</li>
+        <li><strong>Automatic Pagination:</strong> Automatically paginates 15 samples per page with synchronized headers, company info, and total sample counters.</li>
+        <li><strong>Native Device Preview & Sharing:</strong> Opens PDF directly in Android's native print/PDF viewer for immediate verification.</li>
+      </ul>
+    </div>
+
+    <!-- Module 6 -->
+    <div class="feature-card">
+      <div class="feature-card-header">☁️ Module 6: Cloud Synchronization & Automated Lab Email Dispatch</div>
+      <ul>
+        <li><strong>Google Firebase Firestore Backend:</strong> Encrypted cloud database synchronization under isolated user paths with zero security vulnerability.</li>
+        <li><strong>Offline-First Resilience:</strong> Full local persistence (AsyncStorage & Zustand) allowing field inspectors to log samples in zero-reception basements with automatic sync upon re-connection.</li>
+        <li><strong>Automated MailComposer Dispatch:</strong> 1-tap email generation pre-populating recipient laboratory, PO subject line, sample counts, PDF attachment, and photo files.</li>
+        <li><strong>Recipient History Memory:</strong> Automatically records and suggests frequently dispatched testing lab email addresses (e.g. EMSL, Eurofins, SGS).</li>
+      </ul>
+    </div>
+
+    <!-- Terms & Schedule -->
+    <div class="section-title">3. Terms of Delivery & Payment Schedule</div>
     <div class="terms-box">
       <ul>
-        <li><strong>Base Contract Price:</strong> $2,000.00 USD (Includes UI/UX Design $500, Android Development, EPA PDF Engine, and Cloud Sync).</li>
-        <li><strong>Milestone Schedule:</strong> 50% initial deposit ($1,000.00) upon project agreement; 50% balance ($1,000.00) upon final APK testing and delivery.</li>
-        <li><strong>Add-Ons:</strong> Selected add-ons (Website $800, CRM/Admin $200, iOS $500, etc.) will be appended to the scope with separate milestone tracking.</li>
-        <li><strong>Support Period:</strong> Includes 30 days of complimentary post-delivery warranty and bug fixing.</li>
+        <li><strong>Fixed Contract Price:</strong> <strong>$2,000.00 USD</strong> (Includes all 6 modules, source code, and standalone production Android APK).</li>
+        <li><strong>Milestone Schedule:</strong> 50% initial deposit ($1,000.00) upon agreement; 50% balance ($1,000.00) upon final APK testing and delivery.</li>
+        <li><strong>Ownership & IP:</strong> 100% intellectual property ownership transferred to client with zero recurring per-user licensing fees.</li>
+        <li><strong>Warranty & Support:</strong> Includes 30 days of complimentary post-delivery warranty and bug-fixing support.</li>
       </ul>
     </div>
 
