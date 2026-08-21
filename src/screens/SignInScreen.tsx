@@ -229,6 +229,14 @@ export default function SignInScreen() {
     } else {
       try {
         await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
+        
+        // Force account chooser by clearing any cached account session
+        try {
+          await GoogleSignin.signOut();
+        } catch (clearErr) {
+          // Ignore if no active session
+        }
+
         const response = await GoogleSignin.signIn();
         
         // Retrieve ID token from response (compatible with both SDK schema versions)

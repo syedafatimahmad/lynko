@@ -12,6 +12,7 @@ import {
 } from 'firebase/auth';
 import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { Platform } from 'react-native';
+import { GoogleSignin } from '@react-native-google-signin/google-signin';
 import { auth, db } from '../config/firebase';
 
 export interface UserProfile {
@@ -284,6 +285,13 @@ export const signInWithGoogleCredential = async (
  */
 export const logoutUser = async (): Promise<void> => {
   try {
+    if (Platform.OS !== 'web') {
+      try {
+        await GoogleSignin.signOut();
+      } catch (gErr) {
+        // Ignore if no Google session was active
+      }
+    }
     await signOut(auth);
   } catch (e) {
     console.warn('Sign out warning:', e);
