@@ -33,7 +33,7 @@ export const generatePDF = async (project: Project | null, cocData: CoCData, sam
       contactAddress: escapeHtml(cocData.contactAddress),
       contactPhone: escapeHtml(cocData.contactPhone),
       sampledBy: escapeHtml(cocData.sampledBy),
-      accountInfo: escapeHtml(cocData.accountInfo),
+      accountInfo: escapeHtml((cocData.accountInfo || 'Lynko - DFW/47674').replace(/Alpha Environmental/gi, 'Lynko')),
       specialInstructions: escapeHtml(cocData.specialInstructions),
       turnaround1: escapeHtml(cocData.turnaround1 || ''),
     };
@@ -88,16 +88,11 @@ export const generatePDF = async (project: Project | null, cocData: CoCData, sam
           <!-- Header Logos -->
           <table style="margin-bottom: -1px;">
             <tr>
-              <td class="bg-beige" style="width: 18%;">Company Name</td>
-              <td style="width: 42%; vertical-align: middle; padding: 6px 12px;">
-                <div style="font-size: 20px; font-weight: 900; color: #00796B; letter-spacing: 1.5px; font-family: Arial, sans-serif; line-height: 22px;">
-                  LYNKO
-                </div>
-                <div style="font-size: 8.5px; color: #004D40; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px;">
-                  Environmental Field Services
-                </div>
+              <td class="bg-beige" style="width: 15%;">Company Name</td>
+              <td style="width: 45%; vertical-align: middle; padding: 6px 12px;">
+                <img src="${lynkoLogoBase64}" style="max-height: 40px; display: block;" />
               </td>
-              <td class="bg-teal" style="font-size: 13px; letter-spacing: 1px;">
+              <td class="bg-teal" style="font-size: 13px;">
                 CHAIN OF CUSTODY
               </td>
             </tr>
