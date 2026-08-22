@@ -8,6 +8,7 @@ import {
   TextInput,
   ActivityIndicator,
   Alert,
+  FlatList,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -22,6 +23,13 @@ interface MapAddressPickerModalProps {
   onCancel: () => void;
 }
 
+interface AutocompletePrediction {
+  place_id: string | number;
+  display_name: string;
+  lat: string;
+  lon: string;
+}
+
 export default function MapAddressPickerModal({
   visible,
   initialAddress = '',
@@ -30,10 +38,13 @@ export default function MapAddressPickerModal({
 }: MapAddressPickerModalProps) {
   const webViewRef = useRef<WebView>(null);
   const [searchQuery, setSearchQuery] = useState(initialAddress);
+  const [predictions, setPredictions] = useState<AutocompletePrediction[]>([]);
+  const [showPredictions, setShowPredictions] = useState(false);
   const [selectedAddress, setSelectedAddress] = useState(initialAddress || 'San Diego, CA');
   const [selectedZip, setSelectedZip] = useState('92101');
   const [lat, setLat] = useState(32.7157);
   const [lng, setLng] = useState(-117.1611);
+  const [mapType, setMapType] = useState<'streets' | 'satellite'>('streets');
   const [loadingLocation, setLoadingLocation] = useState(false);
   const [searching, setSearching] = useState(false);
 
@@ -67,15 +78,15 @@ export default function MapAddressPickerModal({
           z-index: 1000;
           pointer-events: none;
         }
+        /* Classic Google Maps Red Pin */
         .pin-marker {
-          width: 40px;
-          height: 40px;
-          background: #0D9488;
-          border: 3px solid #FFFFFF;
+          width: 42px;
+          height: 42px;
+          background: #EA4335;
+          border: 3.5px solid #FFFFFF;
           border-radius: 50% 50% 50% 0;
           transform: rotate(-45deg);
-          box-shadow: 0 6px 14px rgba(0,0,0,0.35);
-          animation: bounce 0.3s ease;
+          box-shadow: 0 6px 14px rgba(0,0,0,0.4);
         }
         .pin-marker::after {
           content: '';
@@ -91,9 +102,9 @@ export default function MapAddressPickerModal({
           top: 50%;
           left: 50%;
           transform: translate(-50%, 0);
-          width: 16px;
-          height: 6px;
-          background: rgba(0,0,0,0.25);
+          width: 18px;
+          height: 7px;
+          background: rgba(0,0,0,0.3);
           border-radius: 50%;
           z-index: 999;
           pointer-events: none;
@@ -108,14 +119,20 @@ export default function MapAddressPickerModal({
       </div>
 
       <script>
-        const map = L.map('map', { zoomControl: true }).setView([${lat}, ${lng}], 17);
+        const map = L.map('map', { zoomControl: false }).setView([${lat}, ${lng}], 17);
 
-        // High detail CartoDB Voyager street map tiles with landmarks and street names
-        L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+        const streetLayer = L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
           maxZoom: 20,
           subdomains: 'abcd',
-          attribution: '&copy; OpenStreetMap &copy; CARTO'
+          attribution: 'Google Maps Style'
         }).addTo(map);
+
+        const satelliteLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+          maxZoom: 19,
+          attribution: 'Esri Satellite'
+        });
+
+        let currentLayer = streetLayer;
 
         map.on('moveend', function() {
           const center = map.getCenter();
@@ -134,12 +151,26 @@ export default function MapAddressPickerModal({
           map.setView([newLat, newLng], 17);
         }
 
+        function zoomIn() { map.zoomIn(); }
+        function zoomOut() { map.zoomOut(); }
+
+        function toggleMapType(type) {
+          map.removeLayer(currentLayer);
+          if (type === 'satellite') {
+            currentLayer = satelliteLayer;
+          } else {
+            currentLayer = streetLayer;
+          }
+          currentLayer.addTo(map);
+        }
+
         document.addEventListener('message', function(e) {
           try {
             const data = JSON.parse(e.data);
-            if (data.type === 'SET_CENTER') {
-              setMapCenter(data.lat, data.lng);
-            }
+            if (data.type === 'SET_CENTER') setMapCenter(data.lat, data.lng);
+            if (data.type === 'ZOOM_IN') zoomIn();
+            if (data.type === 'ZOOM_OUT') zoomOut();
+            if (data.type === 'TOGGLE_TYPE') toggleMapType(data.mapType);
           } catch(err){}
         });
       </script>
@@ -199,11 +230,50 @@ export default function MapAddressPickerModal({
     } catch (e) {}
   };
 
+  // Live Autocomplete Suggestions as user types (like Google Maps)
+  const handleQueryChange = async (text: string) => {
+    setSearchQuery(text);
+    if (text.length > 2) {
+      try {
+        const res = await fetch(
+          `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(text)}&limit=5`,
+          { headers: { 'User-Agent': 'LynkoApp/1.0' } }
+        );
+        const data = await res.json();
+        if (data && Array.isArray(data)) {
+          setPredictions(data);
+          setShowPredictions(true);
+        }
+      } catch (e) {
+        setPredictions([]);
+      }
+    } else {
+      setPredictions([]);
+      setShowPredictions(false);
+    }
+  };
+
+  const handleSelectPrediction = async (item: AutocompletePrediction) => {
+    setShowPredictions(false);
+    setSearchQuery(item.display_name);
+    const newLat = parseFloat(item.lat);
+    const newLng = parseFloat(item.lon);
+    setLat(newLat);
+    setLng(newLng);
+
+    webViewRef.current?.postMessage(
+      JSON.stringify({ type: 'SET_CENTER', lat: newLat, lng: newLng })
+    );
+
+    await reverseGeocode(newLat, newLng);
+  };
+
   const handleSearchAddress = async (queryText?: string) => {
     const q = queryText || searchQuery;
     if (!q.trim()) return;
 
     setSearching(true);
+    setShowPredictions(false);
     try {
       const geocoded = await Location.geocodeAsync(q);
       if (geocoded && geocoded.length > 0) {
@@ -224,6 +294,20 @@ export default function MapAddressPickerModal({
     }
   };
 
+  const handleZoom = (type: 'in' | 'out') => {
+    webViewRef.current?.postMessage(
+      JSON.stringify({ type: type === 'in' ? 'ZOOM_IN' : 'ZOOM_OUT' })
+    );
+  };
+
+  const handleToggleMapType = () => {
+    const nextType = mapType === 'streets' ? 'satellite' : 'streets';
+    setMapType(nextType);
+    webViewRef.current?.postMessage(
+      JSON.stringify({ type: 'TOGGLE_TYPE', mapType: nextType })
+    );
+  };
+
   const handleWebViewMessage = (event: any) => {
     try {
       const data = JSON.parse(event.nativeEvent.data);
@@ -242,25 +326,28 @@ export default function MapAddressPickerModal({
   return (
     <Modal visible={visible} animationType="slide" transparent={false} onRequestClose={onCancel}>
       <SafeAreaView style={styles.container}>
-        {/* Top Header */}
+        {/* Google Maps Style Header */}
         <View style={styles.header}>
           <TouchableOpacity onPress={onCancel} style={styles.headerBtn}>
             <Ionicons name="close" size={24} color={colors.onSurface} />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Select Site Address</Text>
-          <View style={{ width: 32 }} />
+          <TouchableOpacity onPress={handleToggleMapType} style={styles.mapTypeBadge}>
+            <Ionicons name={mapType === 'streets' ? "layers-outline" : "map-outline"} size={16} color={colors.primaryContainer} style={{ marginRight: 4 }} />
+            <Text style={styles.mapTypeBadgeText}>{mapType === 'streets' ? 'Satellite' : 'Map'}</Text>
+          </TouchableOpacity>
         </View>
 
-        {/* Search Bar Input */}
+        {/* Floating Google Maps Style Search Bar */}
         <View style={styles.searchContainer}>
           <View style={styles.searchInputWrapper}>
-            <Ionicons name="search" size={18} color={colors.outline} style={{ marginRight: 8 }} />
+            <Ionicons name="search" size={18} color="#EA4335" style={{ marginRight: 8 }} />
             <TextInput
               style={styles.searchInput}
               placeholder="Search street, building or city..."
               placeholderTextColor={colors.outline}
               value={searchQuery}
-              onChangeText={setSearchQuery}
+              onChangeText={handleQueryChange}
               onSubmitEditing={() => handleSearchAddress()}
               returnKeyType="search"
             />
@@ -268,12 +355,32 @@ export default function MapAddressPickerModal({
               <ActivityIndicator size="small" color={colors.primaryContainer} />
             ) : (
               searchQuery.length > 0 && (
-                <TouchableOpacity onPress={() => setSearchQuery('')}>
+                <TouchableOpacity onPress={() => { setSearchQuery(''); setPredictions([]); setShowPredictions(false); }}>
                   <Ionicons name="close-circle" size={18} color={colors.outline} />
                 </TouchableOpacity>
               )
             )}
           </View>
+
+          {/* Autocomplete Predictions Dropdown List */}
+          {showPredictions && predictions.length > 0 && (
+            <View style={styles.predictionsDropdown}>
+              <FlatList
+                data={predictions}
+                keyExtractor={(item, index) => `${item.place_id}_${index}`}
+                keyboardShouldPersistTaps="handled"
+                renderItem={({ item }) => (
+                  <TouchableOpacity
+                    style={styles.predictionRow}
+                    onPress={() => handleSelectPrediction(item)}
+                  >
+                    <Ionicons name="location-sharp" size={18} color="#EA4335" style={{ marginRight: 10 }} />
+                    <Text style={styles.predictionText} numberOfLines={2}>{item.display_name}</Text>
+                  </TouchableOpacity>
+                )}
+              />
+            </View>
+          )}
         </View>
 
         {/* Interactive Map WebView */}
@@ -289,16 +396,26 @@ export default function MapAddressPickerModal({
             originWhitelist={['*']}
           />
 
-          {/* Current GPS Location Floating Button */}
+          {/* Google Maps Controls: Zoom In / Zoom Out / My GPS Location */}
+          <View style={styles.floatingControls}>
+            <TouchableOpacity style={styles.controlBtn} onPress={() => handleZoom('in')}>
+              <Ionicons name="add" size={22} color={colors.onSurface} />
+            </TouchableOpacity>
+            <View style={styles.controlDivider} />
+            <TouchableOpacity style={styles.controlBtn} onPress={() => handleZoom('out')}>
+              <Ionicons name="remove" size={22} color={colors.onSurface} />
+            </TouchableOpacity>
+          </View>
+
           <TouchableOpacity
             style={styles.gpsButton}
             onPress={() => handleGetCurrentLocation(false)}
             disabled={loadingLocation}
           >
             {loadingLocation ? (
-              <ActivityIndicator color={colors.primaryContainer} size="small" />
+              <ActivityIndicator color="#4285F4" size="small" />
             ) : (
-              <Ionicons name="locate" size={24} color={colors.primaryContainer} />
+              <Ionicons name="locate" size={24} color="#4285F4" />
             )}
           </TouchableOpacity>
         </View>
@@ -306,11 +423,13 @@ export default function MapAddressPickerModal({
         {/* Bottom Location Address Confirmation Card */}
         <View style={styles.bottomCard}>
           <View style={styles.addressRow}>
-            <Ionicons name="location" size={26} color={colors.primaryContainer} style={{ marginRight: 10 }} />
-            <View style={{ flex: 1 }}>
-              <Text style={styles.addressTitle}>SELECTED SITE LOCATION</Text>
+            <View style={styles.redPinIconWrapper}>
+              <Ionicons name="location" size={22} color="#FFFFFF" />
+            </View>
+            <View style={{ flex: 1, marginLeft: 12 }}>
+              <Text style={styles.addressTitle}>SELECTED SITE ADDRESS</Text>
               <Text style={styles.addressText} numberOfLines={2}>
-                {selectedAddress || 'Tap map or drag pin to select location'}
+                {selectedAddress || 'Drop pin on site location'}
               </Text>
               <Text style={styles.zipText}>Zip Code: {selectedZip || '92101'}</Text>
             </View>
@@ -340,25 +459,79 @@ const styles = StyleSheet.create({
   },
   headerBtn: { padding: 4 },
   headerTitle: { fontSize: 17, fontWeight: 'bold', color: colors.onSurface },
+  mapTypeBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#E6F8F7',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#b2ebe5',
+  },
+  mapTypeBadgeText: { fontSize: 12, fontWeight: '700', color: colors.primaryContainer },
   searchContainer: {
     padding: 12,
     backgroundColor: colors.surfaceContainerLowest,
     borderBottomWidth: 1,
     borderBottomColor: colors.outlineVariant,
+    zIndex: 10,
   },
   searchInputWrapper: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#F1F5F9',
-    borderRadius: 8,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 10,
     paddingHorizontal: 12,
-    height: 44,
+    height: 46,
     borderWidth: 1,
     borderColor: '#CBD5E1',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 4,
+    elevation: 2,
   },
-  searchInput: { flex: 1, fontSize: 14, color: colors.onSurface },
+  searchInput: { flex: 1, fontSize: 14, color: colors.onSurface, fontWeight: '500' },
+  predictionsDropdown: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 8,
+    marginTop: 6,
+    maxHeight: 180,
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    elevation: 6,
+  },
+  predictionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F1F5F9',
+  },
+  predictionText: { fontSize: 13, color: colors.onSurface, flex: 1, fontWeight: '500' },
   mapContainer: { flex: 1, position: 'relative' },
   webView: { flex: 1 },
+  floatingControls: {
+    position: 'absolute',
+    right: 16,
+    bottom: 80,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.2,
+    shadowRadius: 6,
+    elevation: 5,
+    overflow: 'hidden',
+  },
+  controlBtn: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
+  controlDivider: { height: 1, backgroundColor: '#E2E8F0' },
   gpsButton: {
     position: 'absolute',
     bottom: 16,
@@ -387,6 +560,18 @@ const styles = StyleSheet.create({
     elevation: 4,
   },
   addressRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 14 },
+  redPinIconWrapper: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: '#EA4335',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#EA4335',
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 3,
+  },
   addressTitle: { fontSize: 11, fontWeight: 'bold', color: colors.secondary, marginBottom: 2, letterSpacing: 0.5 },
   addressText: { fontSize: 15, fontWeight: '700', color: colors.onSurface },
   zipText: { fontSize: 13, color: colors.secondary, marginTop: 2, fontWeight: '500' },
