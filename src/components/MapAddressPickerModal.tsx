@@ -30,18 +30,22 @@ export default function MapAddressPickerModal({
 }: MapAddressPickerModalProps) {
   const webViewRef = useRef<WebView>(null);
   const [searchQuery, setSearchQuery] = useState(initialAddress);
-  const [selectedAddress, setSelectedAddress] = useState(initialAddress || '539 W Commerce St, Dallas, TX');
-  const [selectedZip, setSelectedZip] = useState('75208');
-  const [lat, setLat] = useState(32.7767);
-  const [lng, setLng] = useState(-96.7970);
+  const [selectedAddress, setSelectedAddress] = useState(initialAddress || 'San Diego, CA');
+  const [selectedZip, setSelectedZip] = useState('92101');
+  const [lat, setLat] = useState(32.7157);
+  const [lng, setLng] = useState(-117.1611);
   const [loadingLocation, setLoadingLocation] = useState(false);
   const [searching, setSearching] = useState(false);
 
   useEffect(() => {
-    if (visible && initialAddress) {
-      handleSearchAddress(initialAddress);
+    if (visible) {
+      if (initialAddress) {
+        handleSearchAddress(initialAddress);
+      } else {
+        handleGetCurrentLocation(true);
+      }
     }
-  }, [visible, initialAddress]);
+  }, [visible]);
 
   if (!visible) return null;
 
@@ -53,8 +57,8 @@ export default function MapAddressPickerModal({
       <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
       <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
       <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body, html, #map { width: 100%; height: 100%; }
+        * { margin: 0; padding: 0; box-sizing: border-box; touch-action: none; }
+        body, html, #map { width: 100%; height: 100%; background: #E2E8F0; }
         .center-pin {
           position: absolute;
           top: 50%;
@@ -64,36 +68,53 @@ export default function MapAddressPickerModal({
           pointer-events: none;
         }
         .pin-marker {
-          width: 36px;
-          height: 36px;
+          width: 40px;
+          height: 40px;
           background: #0D9488;
           border: 3px solid #FFFFFF;
           border-radius: 50% 50% 50% 0;
           transform: rotate(-45deg);
-          box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+          box-shadow: 0 6px 14px rgba(0,0,0,0.35);
+          animation: bounce 0.3s ease;
         }
         .pin-marker::after {
           content: '';
-          width: 12px;
-          height: 12px;
-          margin: 9px 0 0 9px;
+          width: 14px;
+          height: 14px;
+          margin: 10px 0 0 10px;
           background: #FFFFFF;
           position: absolute;
           border-radius: 50%;
+        }
+        .pin-shadow {
+          position: absolute;
+          top: 50%;
+          left: 50%;
+          transform: translate(-50%, 0);
+          width: 16px;
+          height: 6px;
+          background: rgba(0,0,0,0.25);
+          border-radius: 50%;
+          z-index: 999;
+          pointer-events: none;
         }
       </style>
     </head>
     <body>
       <div id="map"></div>
+      <div class="pin-shadow"></div>
       <div class="center-pin">
         <div class="pin-marker"></div>
       </div>
 
       <script>
-        const map = L.map('map', { zoomControl: false }).setView([${lat}, ${lng}], 15);
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-          maxZoom: 19,
-          attribution: 'OpenStreetMap'
+        const map = L.map('map', { zoomControl: true }).setView([${lat}, ${lng}], 17);
+
+        // High detail CartoDB Voyager street map tiles with landmarks and street names
+        L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+          maxZoom: 20,
+          subdomains: 'abcd',
+          attribution: '&copy; OpenStreetMap &copy; CARTO'
         }).addTo(map);
 
         map.on('moveend', function() {
@@ -105,8 +126,12 @@ export default function MapAddressPickerModal({
           }));
         });
 
+        map.on('click', function(e) {
+          map.panTo(e.latlng);
+        });
+
         function setMapCenter(newLat, newLng) {
-          map.setView([newLat, newLng], 16);
+          map.setView([newLat, newLng], 17);
         }
 
         document.addEventListener('message', function(e) {
@@ -122,13 +147,12 @@ export default function MapAddressPickerModal({
     </html>
   `;
 
-  const handleGetCurrentLocation = async () => {
-    setLoadingLocation(true);
+  const handleGetCurrentLocation = async (silent = false) => {
+    if (!silent) setLoadingLocation(true);
     try {
       const { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== 'granted') {
-        Alert.alert('Permission Required', 'Location access is required to detect site position.');
-        setLoadingLocation(false);
+        if (!silent) Alert.alert('Permission Required', 'Location access is required to detect site position.');
         return;
       }
 
@@ -145,10 +169,9 @@ export default function MapAddressPickerModal({
 
       await reverseGeocode(newLat, newLng);
     } catch (e) {
-      console.error('Error fetching current location:', e);
-      Alert.alert('Notice', 'Could not detect current GPS coordinates.');
+      console.error('Error fetching location:', e);
     } finally {
-      setLoadingLocation(false);
+      if (!silent) setLoadingLocation(false);
     }
   };
 
@@ -157,11 +180,13 @@ export default function MapAddressPickerModal({
       const geocoded = await Location.reverseGeocodeAsync({ latitude, longitude });
       if (geocoded && geocoded.length > 0) {
         const item = geocoded[0];
+        const streetNum = item.streetNumber || '';
         const street = item.street || item.name || '';
+        const fullStreet = `${streetNum} ${street}`.trim();
         const city = item.city || item.subregion || '';
         const region = item.region || '';
-        const zip = item.postalCode || '75208';
-        const formatted = `${street}${street ? ', ' : ''}${city}${city ? ', ' : ''}${region}`.trim();
+        const zip = item.postalCode || '92101';
+        const formatted = `${fullStreet}${fullStreet ? ', ' : ''}${city}${city ? ', ' : ''}${region}`.trim();
 
         if (formatted) {
           setSelectedAddress(formatted);
@@ -171,9 +196,7 @@ export default function MapAddressPickerModal({
           setSelectedZip(zip);
         }
       }
-    } catch (e) {
-      // Fallback
-    }
+    } catch (e) {}
   };
 
   const handleSearchAddress = async (queryText?: string) => {
@@ -213,7 +236,7 @@ export default function MapAddressPickerModal({
   };
 
   const handleConfirmLocation = () => {
-    onConfirm(selectedAddress || searchQuery || 'Site Address', selectedZip || '75208');
+    onConfirm(selectedAddress || searchQuery || 'Site Address', selectedZip || '92101');
   };
 
   return (
@@ -234,7 +257,7 @@ export default function MapAddressPickerModal({
             <Ionicons name="search" size={18} color={colors.outline} style={{ marginRight: 8 }} />
             <TextInput
               style={styles.searchInput}
-              placeholder="Search site address or street..."
+              placeholder="Search street, building or city..."
               placeholderTextColor={colors.outline}
               value={searchQuery}
               onChangeText={setSearchQuery}
@@ -261,12 +284,15 @@ export default function MapAddressPickerModal({
             style={styles.webView}
             onMessage={handleWebViewMessage}
             javaScriptEnabled={true}
+            domStorageEnabled={true}
+            allowFileAccess={true}
+            originWhitelist={['*']}
           />
 
           {/* Current GPS Location Floating Button */}
           <TouchableOpacity
             style={styles.gpsButton}
-            onPress={handleGetCurrentLocation}
+            onPress={() => handleGetCurrentLocation(false)}
             disabled={loadingLocation}
           >
             {loadingLocation ? (
@@ -280,13 +306,13 @@ export default function MapAddressPickerModal({
         {/* Bottom Location Address Confirmation Card */}
         <View style={styles.bottomCard}>
           <View style={styles.addressRow}>
-            <Ionicons name="location" size={24} color={colors.primaryContainer} style={{ marginRight: 10 }} />
+            <Ionicons name="location" size={26} color={colors.primaryContainer} style={{ marginRight: 10 }} />
             <View style={{ flex: 1 }}>
-              <Text style={styles.addressTitle}>SELECTED SITE ADDRESS</Text>
+              <Text style={styles.addressTitle}>SELECTED SITE LOCATION</Text>
               <Text style={styles.addressText} numberOfLines={2}>
-                {selectedAddress || 'Drop pin on site location'}
+                {selectedAddress || 'Tap map or drag pin to select location'}
               </Text>
-              <Text style={styles.zipText}>Zip Code: {selectedZip || '75208'}</Text>
+              <Text style={styles.zipText}>Zip Code: {selectedZip || '92101'}</Text>
             </View>
           </View>
 
@@ -345,7 +371,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.2,
+    shadowOpacity: 0.25,
     shadowRadius: 6,
     elevation: 5,
   },

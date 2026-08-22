@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   View,
   Text,
@@ -8,7 +8,6 @@ import {
   ActivityIndicator,
   TextInput,
   Alert,
-  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -48,6 +47,43 @@ export default function ImageEditorModal({
   const [textInput, setTextInput] = useState('');
   const [showTextInput, setShowTextInput] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [imageBase64Url, setImageBase64Url] = useState<string | null>(null);
+  const [loadingImage, setLoadingImage] = useState(true);
+
+  useEffect(() => {
+    let isMounted = true;
+    const loadImageData = async () => {
+      if (!visible || !imageUri) return;
+      setLoadingImage(true);
+      try {
+        if (imageUri.startsWith('data:image')) {
+          if (isMounted) {
+            setImageBase64Url(imageUri);
+            setLoadingImage(false);
+          }
+        } else {
+          const b64 = await FileSystem.readAsStringAsync(imageUri, {
+            encoding: FileSystem.EncodingType.Base64,
+          });
+          if (isMounted) {
+            setImageBase64Url(`data:image/jpeg;base64,${b64}`);
+            setLoadingImage(false);
+          }
+        }
+      } catch (e) {
+        console.error('Error loading image for editor:', e);
+        if (isMounted) {
+          setImageBase64Url(imageUri);
+          setLoadingImage(false);
+        }
+      }
+    };
+
+    loadImageData();
+    return () => {
+      isMounted = false;
+    };
+  }, [visible, imageUri]);
 
   if (!visible) return null;
 
@@ -76,18 +112,15 @@ export default function ImageEditorModal({
         let currentColor = '${selectedColor}';
         let isDrawing = false;
         let strokeWidth = 5;
-        let history = [];
 
-        img.crossOrigin = 'Anonymous';
         img.onload = () => {
           fitCanvas();
-          saveState();
         };
-        img.src = '${imageUri}';
+        img.src = '${imageBase64Url || ''}';
 
         function fitCanvas() {
-          let w = img.width;
-          let h = img.height;
+          let w = img.width || 800;
+          let h = img.height || 600;
           canvas.width = w;
           canvas.height = h;
           drawImage();
@@ -104,15 +137,6 @@ export default function ImageEditorModal({
             ctx.drawImage(img, -img.width / 2, -img.height / 2, img.width, img.height);
           }
           ctx.restore();
-          replayHistory();
-        }
-
-        function saveState() {
-          history.push(ctx.getImageData(0, 0, canvas.width, canvas.height));
-        }
-
-        function replayHistory() {
-          // Lines drawn manually stay on canvas
         }
 
         function rotateImage(angle) {
@@ -127,7 +151,6 @@ export default function ImageEditorModal({
           currentColor = c;
         }
 
-        // Pointer / Touch Handlers for Drawing
         function getCanvasCoords(e) {
           const rect = canvas.getBoundingClientRect();
           const clientX = e.touches ? e.touches[0].clientX : e.clientX;
@@ -146,7 +169,7 @@ export default function ImageEditorModal({
           ctx.beginPath();
           ctx.moveTo(pos.x, pos.y);
           ctx.strokeStyle = currentColor;
-          ctx.lineWidth = strokeWidth * (canvas.width / 800);
+          ctx.lineWidth = Math.max(6, strokeWidth * (canvas.width / 800));
           ctx.lineCap = 'round';
           ctx.lineJoin = 'round';
         }
@@ -176,11 +199,11 @@ export default function ImageEditorModal({
         function addText(text) {
           if (!text) return;
           ctx.save();
-          ctx.font = 'bold ' + Math.max(24, canvas.width / 20) + 'px sans-serif';
+          ctx.font = 'bold ' + Math.max(28, canvas.width / 18) + 'px sans-serif';
           ctx.fillStyle = currentColor;
-          ctx.shadowColor = 'rgba(0,0,0,0.8)';
-          ctx.shadowBlur = 6;
-          ctx.fillText(text, canvas.width / 10, canvas.height / 4);
+          ctx.shadowColor = 'rgba(0,0,0,0.85)';
+          ctx.shadowBlur = 8;
+          ctx.fillText(text, canvas.width / 10, canvas.height / 3);
           ctx.restore();
         }
 
@@ -265,7 +288,7 @@ export default function ImageEditorModal({
 
           <Text style={styles.topBarTitle}>Photo Editor & Markup</Text>
 
-          <TouchableOpacity onPress={handleTriggerExport} style={styles.saveBtn} disabled={saving}>
+          <TouchableOpacity onPress={handleTriggerExport} style={styles.saveBtn} disabled={saving || loadingImage}>
             {saving ? (
               <ActivityIndicator color="#FFFFFF" size="small" />
             ) : (
@@ -279,15 +302,23 @@ export default function ImageEditorModal({
 
         {/* Main Interactive Canvas WebView */}
         <View style={styles.canvasWrapper}>
-          <WebView
-            ref={webViewRef}
-            source={{ html: htmlContent }}
-            style={styles.webView}
-            scrollEnabled={false}
-            onMessage={handleWebViewMessage}
-            javaScriptEnabled={true}
-            allowFileAccess={true}
-          />
+          {loadingImage ? (
+            <View style={styles.loadingContainer}>
+              <ActivityIndicator size="large" color={colors.primaryContainer} />
+              <Text style={styles.loadingText}>Loading Photo Editor...</Text>
+            </View>
+          ) : (
+            <WebView
+              ref={webViewRef}
+              source={{ html: htmlContent }}
+              style={styles.webView}
+              scrollEnabled={false}
+              onMessage={handleWebViewMessage}
+              javaScriptEnabled={true}
+              allowFileAccess={true}
+              originWhitelist={['*']}
+            />
+          )}
         </View>
 
         {/* Text Entry Overlay Input */}
@@ -330,7 +361,7 @@ export default function ImageEditorModal({
           {/* Action Tools Row */}
           <View style={styles.toolsRow}>
             <TouchableOpacity style={styles.toolBtn} onPress={() => handleRotate(90)}>
-              <Ionicons name="location-outline" size={22} color="#FFFFFF" style={{ transform: [{ rotate: '90deg' }] }} />
+              <Ionicons name="reload" size={22} color="#FFFFFF" />
               <Text style={styles.toolLabel}>Rotate</Text>
             </TouchableOpacity>
 
@@ -377,6 +408,8 @@ const styles = StyleSheet.create({
   saveBtnContent: { flexDirection: 'row', alignItems: 'center' },
   saveBtnText: { color: '#FFFFFF', fontSize: 14, fontWeight: '700' },
   canvasWrapper: { flex: 1, backgroundColor: '#020617' },
+  loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  loadingText: { color: '#94A3B8', marginTop: 10, fontSize: 14 },
   webView: { flex: 1, backgroundColor: 'transparent' },
   textInputBar: {
     flexDirection: 'row',

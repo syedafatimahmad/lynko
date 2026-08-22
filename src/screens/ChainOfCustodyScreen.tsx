@@ -148,6 +148,9 @@ export default function ChainOfCustodyScreen({ navigation }: any) {
     if (!cocData.inspectorSignature) {
       newErrors.signature = 'Courier signature is required before submitting.';
     }
+    if (!tosAgreed) {
+      newErrors.tos = 'You must agree to the Terms of Service before submitting.';
+    }
 
     if (Object.keys(newErrors).length > 0) {
       setErrors(newErrors);
@@ -475,10 +478,25 @@ export default function ChainOfCustodyScreen({ navigation }: any) {
             <Text style={styles.infoValue}>None</Text>
           </View>
 
-          <View style={styles.toggleRow}>
-            <Text style={[styles.toggleLabel, styles.underline]}>I have read and agree to the Terms of Service</Text>
-            <Switch value={tosAgreed} onValueChange={setTosAgreed} trackColor={{ true: colors.primaryContainer }} />
+          <View style={[styles.toggleRow, errors.tos ? styles.toggleRowError : null]}>
+            <Text style={[styles.toggleLabel, styles.underline, errors.tos ? { color: colors.error, fontWeight: '700' } : null]}>
+              I have read and agree to the Terms of Service <Text style={styles.requiredAsterisk}>*</Text>
+            </Text>
+            <Switch 
+              value={tosAgreed} 
+              onValueChange={(val) => {
+                clearError('tos');
+                setTosAgreed(val);
+              }} 
+              trackColor={{ true: colors.primaryContainer, false: '#CBD5E1' }} 
+            />
           </View>
+          {errors.tos && (
+            <View style={[styles.errorRow, { marginTop: -4, marginBottom: 8 }]}>
+              <Ionicons name="alert-circle" size={13} color={colors.error} style={{ marginRight: 4 }} />
+              <Text style={styles.errorText}>{errors.tos}</Text>
+            </View>
+          )}
 
           <View style={styles.toggleRow}>
             <Text style={styles.toggleLabel}>Save as template for future projects</Text>
@@ -644,6 +662,7 @@ const styles = StyleSheet.create({
   signButtonText: { color: colors.primaryContainer, fontWeight: '700', fontSize: 14 },
   signatureImage: { height: 100, width: '100%', backgroundColor: '#fff', marginBottom: 12, borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 8 },
   toggleRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 8 },
+  toggleRowError: { backgroundColor: '#FEF2F2', borderRadius: 6, paddingHorizontal: 6, borderWidth: 1, borderColor: '#FCA5A5' },
   toggleLabel: { fontSize: 14, color: colors.onSurface, flex: 1 },
   underline: { textDecorationLine: 'underline' },
   infoValue: { fontSize: 14, color: colors.secondary, fontWeight: '500' },
