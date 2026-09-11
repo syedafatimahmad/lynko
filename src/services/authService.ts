@@ -46,10 +46,14 @@ export const mapAuthError = (err: any): { message: string; actionType?: 'switchT
         actionType: 'switchToLogin'
       };
     case 'auth/user-not-found':
+      return {
+        message: 'No user account found with this email. If you do not have an account, tap "Create Account" below.',
+        actionType: 'switchToRegister'
+      };
     case 'auth/invalid-credential':
       return {
-        message: 'Invalid email or password. If you do not have an account, tap "Create Account" below.',
-        actionType: 'switchToRegister'
+        message: 'Invalid login credential or password. Please verify your details or reset your password below.',
+        actionType: 'switchToLogin'
       };
     case 'auth/wrong-password':
       return {

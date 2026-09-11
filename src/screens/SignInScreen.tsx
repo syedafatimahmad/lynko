@@ -35,8 +35,12 @@ import { useLynkoStore } from '../store/lynkoStore';
 import { colors } from '../theme/colors';
 import { auth } from '../config/firebase';
 
+const GOOGLE_WEB_CLIENT_ID = 
+  process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID || 
+  '12808282527-mv6kltqjqj24i2rdt8ckh0oj8si3duqb.apps.googleusercontent.com';
+
 if (Platform.OS !== 'web' && isNativeGoogleSigninAvailable()) {
-  configureGoogleSignin('429476843085-69p861nle0eqn9r8mbl2n5d5l9kpia7r.apps.googleusercontent.com');
+  configureGoogleSignin(GOOGLE_WEB_CLIENT_ID);
 }
 
 export default function SignInScreen() {
@@ -268,6 +272,8 @@ export default function SignInScreen() {
           // Sign in is in progress already
         } else if (err.code === statusCodes.PLAY_SERVICES_NOT_AVAILABLE) {
           setError('Google Play Services is not available or outdated.');
+        } else if (err?.code === 'auth/invalid-credential') {
+          setError('Google Sign-In credential verification failed. Please verify that the SHA-1 certificate is added in Firebase Console.');
         } else {
           const parsed = mapAuthError(err);
           setError(parsed.message || 'Google Sign-In failed. Please sign in with email and password.');
