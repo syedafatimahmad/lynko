@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -9,12 +9,17 @@ import {
   ActivityIndicator,
   Alert,
   FlatList,
+  Keyboard,
+  Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { WebView } from 'react-native-webview';
 import * as Location from 'expo-location';
 import { colors } from '../theme/colors';
+
+const LOCATIONIQ_KEY =
+  process.env.EXPO_PUBLIC_LOCATIONIQ_API_KEY || 'pk.61099061999fa4b0e64731ec170c6db6';
 
 interface MapAddressPickerModalProps {
   visible: boolean;
@@ -24,10 +29,13 @@ interface MapAddressPickerModalProps {
 }
 
 interface AutocompletePrediction {
-  place_id: string | number;
-  display_name: string;
-  lat: string;
-  lon: string;
+  id: string;
+  title: string;
+  subtitle: string;
+  lat: number;
+  lng: number;
+  postalCode?: string;
+  fullAddress?: string;
 }
 
 export default function MapAddressPickerModal({
@@ -37,6 +45,7 @@ export default function MapAddressPickerModal({
   onCancel,
 }: MapAddressPickerModalProps) {
   const webViewRef = useRef<WebView>(null);
+
   const [searchQuery, setSearchQuery] = useState(initialAddress);
   const [predictions, setPredictions] = useState<AutocompletePrediction[]>([]);
   const [showPredictions, setShowPredictions] = useState(false);
@@ -47,19 +56,314 @@ export default function MapAddressPickerModal({
   const [mapType, setMapType] = useState<'streets' | 'satellite'>('streets');
   const [loadingLocation, setLoadingLocation] = useState(false);
   const [searching, setSearching] = useState(false);
+  const [resolvingAddress, setResolvingAddress] = useState(false);
 
+  const searchTimerRef = useRef<any>(null);
+  const reverseGeocodeTimerRef = useRef<any>(null);
+
+  // Initialize: resolve initial address or get current GPS location
   useEffect(() => {
     if (visible) {
-      if (initialAddress) {
-        handleSearchAddress(initialAddress);
+      if (initialAddress && initialAddress.trim().length > 3) {
+        geocodeAddressQuery(initialAddress.trim(), true);
       } else {
         handleGetCurrentLocation(true);
       }
     }
   }, [visible]);
 
+  // Reverse Geocoding via LocationIQ with fallback to expo-location
+  const reverseGeocodeCoords = useCallback(async (targetLat: number, targetLng: number) => {
+    setResolvingAddress(true);
+    try {
+      let resolved = false;
+
+      // 1. Try LocationIQ Reverse Geocoding
+      if (LOCATIONIQ_KEY && !LOCATIONIQ_KEY.includes('YOUR_')) {
+        try {
+          const url = `https://us1.locationiq.com/v1/reverse?key=${LOCATIONIQ_KEY}&lat=${targetLat}&lon=${targetLng}&format=json&addressdetails=1`;
+          const res = await fetch(url);
+          const data = await res.json();
+
+          if (data && data.address) {
+            const addr = data.address;
+            const streetNumber = addr.house_number || '';
+            const streetName = addr.road || addr.street || '';
+            const street = [streetNumber, streetName].filter(Boolean).join(' ');
+            const city = addr.city || addr.town || addr.village || addr.suburb || addr.county || '';
+            const state = addr.state || '';
+            const zip = addr.postcode ? addr.postcode.split('-')[0] : '';
+
+            const cleanAddress = [street, city, state].filter(Boolean).join(', ') || data.display_name;
+            setSelectedAddress(cleanAddress);
+            if (zip) setSelectedZip(zip);
+            resolved = true;
+          }
+        } catch (apiErr) {
+          console.warn('LocationIQ reverse geocode deferred to fallback:', apiErr);
+        }
+      }
+
+      // 2. Resilient Fallback to Device OS Geocoding
+      if (!resolved) {
+        const results = await Location.reverseGeocodeAsync({
+          latitude: targetLat,
+          longitude: targetLng,
+        });
+
+        if (results && results.length > 0) {
+          const g = results[0];
+          const street = [g.streetNumber, g.street].filter(Boolean).join(' ');
+          const cityState = [g.city || g.subregion, g.region].filter(Boolean).join(', ');
+          const fullAddr = [street, cityState].filter(Boolean).join(', ') || g.name || 'Selected Location';
+          setSelectedAddress(fullAddr);
+          if (g.postalCode) {
+            setSelectedZip(g.postalCode.split('-')[0]);
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('Reverse geocoding notice:', e);
+    } finally {
+      setResolvingAddress(false);
+    }
+  }, []);
+
+  // When map completes movement
+  const handleMapMoveEnd = (newLat: number, newLng: number) => {
+    setLat(newLat);
+    setLng(newLng);
+
+    if (reverseGeocodeTimerRef.current) clearTimeout(reverseGeocodeTimerRef.current);
+    reverseGeocodeTimerRef.current = setTimeout(() => {
+      reverseGeocodeCoords(newLat, newLng);
+    }, 450);
+  };
+
+  // Search input change with live autocomplete
+  const handleQueryChange = (text: string) => {
+    setSearchQuery(text);
+
+    if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
+    if (!text || text.trim().length < 2) {
+      setPredictions([]);
+      setShowPredictions(false);
+      setSearching(false);
+      return;
+    }
+
+    setSearching(true);
+    searchTimerRef.current = setTimeout(async () => {
+      const q = text.trim();
+      let preds: AutocompletePrediction[] = [];
+
+      // 1. Try LocationIQ Autocomplete API
+      if (LOCATIONIQ_KEY && !LOCATIONIQ_KEY.includes('YOUR_')) {
+        try {
+          const url = `https://api.locationiq.com/v1/autocomplete?key=${LOCATIONIQ_KEY}&q=${encodeURIComponent(
+            q
+          )}&limit=6&normalizecity=1`;
+          const res = await fetch(url);
+          const data = await res.json();
+
+          if (Array.isArray(data)) {
+            preds = data.map((item: any) => {
+              const mainTitle =
+                item.display_place || item.address?.name || item.display_name.split(',')[0];
+              const secondary =
+                item.display_address ||
+                item.display_name.split(',').slice(1).join(',').trim();
+
+              return {
+                id: String(item.place_id || Math.random()),
+                title: mainTitle,
+                subtitle: secondary,
+                lat: parseFloat(item.lat),
+                lng: parseFloat(item.lon),
+                postalCode: item.address?.postcode ? item.address.postcode.split('-')[0] : '',
+                fullAddress: item.display_name,
+              };
+            });
+          }
+        } catch (apiErr) {
+          console.warn('LocationIQ autocomplete query deferred:', apiErr);
+        }
+      }
+
+      // 2. Fallback to Device-Native Geocoding
+      if (preds.length === 0) {
+        try {
+          const locs = await Location.geocodeAsync(q);
+          if (locs && locs.length > 0) {
+            preds = locs.slice(0, 5).map((l, idx) => ({
+              id: `device_${idx}`,
+              title: q,
+              subtitle: `Lat: ${l.latitude.toFixed(4)}, Lng: ${l.longitude.toFixed(4)}`,
+              lat: l.latitude,
+              lng: l.longitude,
+            }));
+          }
+        } catch (e) {
+          // Ignore
+        }
+      }
+
+      setPredictions(preds);
+      setShowPredictions(preds.length > 0);
+      setSearching(false);
+    }, 350);
+  };
+
+  // Prediction selection
+  const handleSelectPrediction = (item: AutocompletePrediction) => {
+    Keyboard.dismiss();
+    setShowPredictions(false);
+    setSearchQuery(item.title);
+
+    setLat(item.lat);
+    setLng(item.lng);
+    setSelectedAddress(item.fullAddress || `${item.title}, ${item.subtitle}`);
+    if (item.postalCode) setSelectedZip(item.postalCode);
+
+    // Pan WebView map to selected coordinates
+    if (webViewRef.current) {
+      const js = `
+        if (window.map) {
+          window.map.flyTo([${item.lat}, ${item.lng}], 17, { animate: true, duration: 0.8 });
+        }
+        true;
+      `;
+      webViewRef.current.injectJavaScript(js);
+    }
+
+    // Trigger reverse geocoding to ensure complete address & zip
+    reverseGeocodeCoords(item.lat, item.lng);
+  };
+
+  // Explicit Search submit
+  const geocodeAddressQuery = async (queryText: string, initial = false) => {
+    Keyboard.dismiss();
+    setShowPredictions(false);
+    setSearching(true);
+    try {
+      const locs = await Location.geocodeAsync(queryText);
+      if (locs && locs.length > 0) {
+        const { latitude, longitude } = locs[0];
+        setLat(latitude);
+        setLng(longitude);
+
+        if (webViewRef.current) {
+          const js = `
+            if (window.map) {
+              window.map.flyTo([${latitude}, ${longitude}], 17, { animate: true, duration: 0.8 });
+            }
+            true;
+          `;
+          webViewRef.current.injectJavaScript(js);
+        }
+
+        reverseGeocodeCoords(latitude, longitude);
+      } else if (!initial) {
+        Alert.alert('Address Not Found', 'Could not locate address. Please check spelling or refine search.');
+      }
+    } catch (e) {
+      if (!initial) {
+        Alert.alert('Search Error', 'Unable to resolve address. Please check your network connection.');
+      }
+    } finally {
+      setSearching(false);
+    }
+  };
+
+  // Current GPS location
+  const handleGetCurrentLocation = async (silent = false) => {
+    setLoadingLocation(true);
+    try {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') {
+        if (!silent) {
+          Alert.alert('Permission Denied', 'Location permission is required to detect your site.');
+        }
+        setLoadingLocation(false);
+        return;
+      }
+
+      const loc = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.Balanced,
+      });
+
+      const curLat = loc.coords.latitude;
+      const curLng = loc.coords.longitude;
+      setLat(curLat);
+      setLng(curLng);
+
+      if (webViewRef.current) {
+        const js = `
+          if (window.map) {
+            window.map.flyTo([${curLat}, ${curLng}], 17, { animate: true, duration: 0.8 });
+          }
+          true;
+        `;
+        webViewRef.current.injectJavaScript(js);
+      }
+
+      reverseGeocodeCoords(curLat, curLng);
+    } catch (e) {
+      if (!silent) {
+        Alert.alert('GPS Error', 'Could not acquire current GPS location.');
+      }
+    } finally {
+      setLoadingLocation(false);
+    }
+  };
+
+  // Zoom controls
+  const handleZoom = (direction: 'in' | 'out') => {
+    if (webViewRef.current) {
+      const js = `
+        if (window.map) {
+          window.map.${direction === 'in' ? 'zoomIn()' : 'zoomOut()'};
+        }
+        true;
+      `;
+      webViewRef.current.injectJavaScript(js);
+    }
+  };
+
+  // Toggle Map Style
+  const handleToggleMapType = () => {
+    const nextType = mapType === 'streets' ? 'satellite' : 'streets';
+    setMapType(nextType);
+    if (webViewRef.current) {
+      const js = `
+        if (window.setMapLayer) {
+          window.setMapLayer('${nextType}');
+        }
+        true;
+      `;
+      webViewRef.current.injectJavaScript(js);
+    }
+  };
+
+  // Messages from WebView
+  const handleWebViewMessage = (event: any) => {
+    try {
+      const data = JSON.parse(event.nativeEvent.data);
+      if (data.type === 'moveEnd') {
+        handleMapMoveEnd(data.lat, data.lng);
+      }
+    } catch (e) {
+      // Ignore
+    }
+  };
+
+  const handleConfirmLocation = () => {
+    onConfirm(selectedAddress, selectedZip);
+  };
+
   if (!visible) return null;
 
+  // High-performance Leaflet map HTML with zero black-screen risk
   const mapHtml = `
     <!DOCTYPE html>
     <html>
@@ -69,305 +373,124 @@ export default function MapAddressPickerModal({
       <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
       <style>
         * { margin: 0; padding: 0; box-sizing: border-box; touch-action: none; }
-        body, html, #map { width: 100%; height: 100%; background: #E2E8F0; }
-        .center-pin {
-          position: absolute;
-          top: 50%;
-          left: 50%;
-          transform: translate(-50%, -100%);
-          z-index: 1000;
-          pointer-events: none;
-        }
-        /* Classic Google Maps Red Pin */
-        .pin-marker {
-          width: 42px;
-          height: 42px;
-          background: #EA4335;
-          border: 3.5px solid #FFFFFF;
-          border-radius: 50% 50% 50% 0;
-          transform: rotate(-45deg);
-          box-shadow: 0 6px 14px rgba(0,0,0,0.4);
-        }
-        .pin-marker::after {
-          content: '';
-          width: 14px;
-          height: 14px;
-          margin: 10px 0 0 10px;
-          background: #FFFFFF;
-          position: absolute;
-          border-radius: 50%;
-        }
-        .pin-shadow {
-          position: absolute;
-          top: 50%;
-          left: 50%;
-          transform: translate(-50%, 0);
-          width: 18px;
-          height: 7px;
-          background: rgba(0,0,0,0.3);
-          border-radius: 50%;
-          z-index: 999;
-          pointer-events: none;
-        }
+        body, html, #map { width: 100%; height: 100%; background: #F1F5F9; }
       </style>
     </head>
     <body>
       <div id="map"></div>
-      <div class="pin-shadow"></div>
-      <div class="center-pin">
-        <div class="pin-marker"></div>
-      </div>
-
       <script>
-        const map = L.map('map', { zoomControl: false }).setView([${lat}, ${lng}], 17);
+        const map = L.map('map', { 
+          zoomControl: false,
+          attributionControl: false 
+        }).setView([${lat}, ${lng}], 16);
+        window.map = map;
 
-        const streetLayer = L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
-          maxZoom: 20,
-          subdomains: 'abcd',
-          attribution: 'Google Maps Style'
-        }).addTo(map);
-
-        const satelliteLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-          maxZoom: 19,
-          attribution: 'Esri Satellite'
+        // Street Layer: High-detail LocationIQ Streets (No Watermark)
+        const streetLayer = L.tileLayer('https://tiles.locationiq.com/v3/streets/r/{z}/{x}/{y}.png?key=${LOCATIONIQ_KEY}', {
+          maxZoom: 19
         });
 
-        let currentLayer = streetLayer;
+        // Satellite Layer: High-resolution Esri World Imagery (No Watermark)
+        const satelliteLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+          maxZoom: 19
+        });
+
+        // Street Labels overlay for satellite: Esri Boundaries and Places
+        const labelLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}', {
+          maxZoom: 19
+        });
+
+        streetLayer.addTo(map);
+        let currentType = 'streets';
+
+        window.setMapLayer = function(type) {
+          if (type === 'satellite') {
+            map.removeLayer(streetLayer);
+            satelliteLayer.addTo(map);
+            labelLayer.addTo(map);
+          } else {
+            map.removeLayer(satelliteLayer);
+            map.removeLayer(labelLayer);
+            streetLayer.addTo(map);
+          }
+          currentType = type;
+        };
 
         map.on('moveend', function() {
-          const center = map.getCenter();
+          const c = map.getCenter();
           window.ReactNativeWebView.postMessage(JSON.stringify({
-            type: 'MAP_MOVED',
-            lat: center.lat,
-            lng: center.lng
+            type: 'moveEnd',
+            lat: c.lat,
+            lng: c.lng
           }));
-        });
-
-        map.on('click', function(e) {
-          map.panTo(e.latlng);
-        });
-
-        function setMapCenter(newLat, newLng) {
-          map.setView([newLat, newLng], 17);
-        }
-
-        function zoomIn() { map.zoomIn(); }
-        function zoomOut() { map.zoomOut(); }
-
-        function toggleMapType(type) {
-          map.removeLayer(currentLayer);
-          if (type === 'satellite') {
-            currentLayer = satelliteLayer;
-          } else {
-            currentLayer = streetLayer;
-          }
-          currentLayer.addTo(map);
-        }
-
-        document.addEventListener('message', function(e) {
-          try {
-            const data = JSON.parse(e.data);
-            if (data.type === 'SET_CENTER') setMapCenter(data.lat, data.lng);
-            if (data.type === 'ZOOM_IN') zoomIn();
-            if (data.type === 'ZOOM_OUT') zoomOut();
-            if (data.type === 'TOGGLE_TYPE') toggleMapType(data.mapType);
-          } catch(err){}
         });
       </script>
     </body>
     </html>
   `;
 
-  const handleGetCurrentLocation = async (silent = false) => {
-    if (!silent) setLoadingLocation(true);
-    try {
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== 'granted') {
-        if (!silent) Alert.alert('Permission Required', 'Location access is required to detect site position.');
-        return;
-      }
-
-      const loc = await Location.getCurrentPositionAsync({});
-      const newLat = loc.coords.latitude;
-      const newLng = loc.coords.longitude;
-
-      setLat(newLat);
-      setLng(newLng);
-
-      webViewRef.current?.postMessage(
-        JSON.stringify({ type: 'SET_CENTER', lat: newLat, lng: newLng })
-      );
-
-      await reverseGeocode(newLat, newLng);
-    } catch (e) {
-      console.error('Error fetching location:', e);
-    } finally {
-      if (!silent) setLoadingLocation(false);
-    }
-  };
-
-  const reverseGeocode = async (latitude: number, longitude: number) => {
-    try {
-      const geocoded = await Location.reverseGeocodeAsync({ latitude, longitude });
-      if (geocoded && geocoded.length > 0) {
-        const item = geocoded[0];
-        const streetNum = item.streetNumber || '';
-        const street = item.street || item.name || '';
-        const fullStreet = `${streetNum} ${street}`.trim();
-        const city = item.city || item.subregion || '';
-        const region = item.region || '';
-        const zip = item.postalCode || '92101';
-        const formatted = `${fullStreet}${fullStreet ? ', ' : ''}${city}${city ? ', ' : ''}${region}`.trim();
-
-        if (formatted) {
-          setSelectedAddress(formatted);
-          setSearchQuery(formatted);
-        }
-        if (zip) {
-          setSelectedZip(zip);
-        }
-      }
-    } catch (e) {}
-  };
-
-  // Live Autocomplete Suggestions as user types (like Google Maps)
-  const handleQueryChange = async (text: string) => {
-    setSearchQuery(text);
-    if (text.length > 2) {
-      try {
-        const res = await fetch(
-          `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(text)}&limit=5`,
-          { headers: { 'User-Agent': 'LynkoApp/1.0' } }
-        );
-        const data = await res.json();
-        if (data && Array.isArray(data)) {
-          setPredictions(data);
-          setShowPredictions(true);
-        }
-      } catch (e) {
-        setPredictions([]);
-      }
-    } else {
-      setPredictions([]);
-      setShowPredictions(false);
-    }
-  };
-
-  const handleSelectPrediction = async (item: AutocompletePrediction) => {
-    setShowPredictions(false);
-    setSearchQuery(item.display_name);
-    const newLat = parseFloat(item.lat);
-    const newLng = parseFloat(item.lon);
-    setLat(newLat);
-    setLng(newLng);
-
-    webViewRef.current?.postMessage(
-      JSON.stringify({ type: 'SET_CENTER', lat: newLat, lng: newLng })
-    );
-
-    await reverseGeocode(newLat, newLng);
-  };
-
-  const handleSearchAddress = async (queryText?: string) => {
-    const q = queryText || searchQuery;
-    if (!q.trim()) return;
-
-    setSearching(true);
-    setShowPredictions(false);
-    try {
-      const geocoded = await Location.geocodeAsync(q);
-      if (geocoded && geocoded.length > 0) {
-        const { latitude, longitude } = geocoded[0];
-        setLat(latitude);
-        setLng(longitude);
-        webViewRef.current?.postMessage(
-          JSON.stringify({ type: 'SET_CENTER', lat: latitude, lng: longitude })
-        );
-        await reverseGeocode(latitude, longitude);
-      } else {
-        Alert.alert('Location Search', 'Address not found on map.');
-      }
-    } catch (e) {
-      console.error('Search geocode error:', e);
-    } finally {
-      setSearching(false);
-    }
-  };
-
-  const handleZoom = (type: 'in' | 'out') => {
-    webViewRef.current?.postMessage(
-      JSON.stringify({ type: type === 'in' ? 'ZOOM_IN' : 'ZOOM_OUT' })
-    );
-  };
-
-  const handleToggleMapType = () => {
-    const nextType = mapType === 'streets' ? 'satellite' : 'streets';
-    setMapType(nextType);
-    webViewRef.current?.postMessage(
-      JSON.stringify({ type: 'TOGGLE_TYPE', mapType: nextType })
-    );
-  };
-
-  const handleWebViewMessage = (event: any) => {
-    try {
-      const data = JSON.parse(event.nativeEvent.data);
-      if (data.type === 'MAP_MOVED') {
-        setLat(data.lat);
-        setLng(data.lng);
-        reverseGeocode(data.lat, data.lng);
-      }
-    } catch (e) {}
-  };
-
-  const handleConfirmLocation = () => {
-    onConfirm(selectedAddress || searchQuery || 'Site Address', selectedZip || '92101');
-  };
-
   return (
-    <Modal visible={visible} animationType="slide" transparent={false} onRequestClose={onCancel}>
+    <Modal visible={visible} animationType="slide" onRequestClose={onCancel}>
       <SafeAreaView style={styles.container}>
-        {/* Google Maps Style Header */}
+        {/* Header */}
         <View style={styles.header}>
           <TouchableOpacity onPress={onCancel} style={styles.headerBtn}>
             <Ionicons name="close" size={24} color={colors.onSurface} />
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>Select Site Address</Text>
-          <TouchableOpacity onPress={handleToggleMapType} style={styles.mapTypeBadge}>
-            <Ionicons name={mapType === 'streets' ? "layers-outline" : "map-outline"} size={16} color={colors.primaryContainer} style={{ marginRight: 4 }} />
-            <Text style={styles.mapTypeBadgeText}>{mapType === 'streets' ? 'Satellite' : 'Map'}</Text>
+          <Text style={styles.headerTitle}>LocationIQ Site Picker</Text>
+          <TouchableOpacity
+            style={styles.mapTypeBadge}
+            onPress={handleToggleMapType}
+            activeOpacity={0.8}
+          >
+            <Ionicons
+              name={mapType === 'streets' ? 'earth-outline' : 'map-outline'}
+              size={15}
+              color={colors.primaryContainer}
+              style={{ marginRight: 4 }}
+            />
+            <Text style={styles.mapTypeBadgeText}>
+              {mapType === 'streets' ? 'Satellite' : 'Street View'}
+            </Text>
           </TouchableOpacity>
         </View>
 
-        {/* Floating Google Maps Style Search Bar */}
+        {/* Live Search Bar */}
         <View style={styles.searchContainer}>
           <View style={styles.searchInputWrapper}>
-            <Ionicons name="search" size={18} color="#EA4335" style={{ marginRight: 8 }} />
+            <Ionicons name="search" size={19} color={colors.primaryContainer} style={{ marginRight: 8 }} />
             <TextInput
               style={styles.searchInput}
-              placeholder="Search street, building or city..."
+              placeholder="Search street, building, or city..."
               placeholderTextColor={colors.outline}
               value={searchQuery}
               onChangeText={handleQueryChange}
-              onSubmitEditing={() => handleSearchAddress()}
+              onSubmitEditing={() => geocodeAddressQuery(searchQuery)}
               returnKeyType="search"
             />
             {searching ? (
               <ActivityIndicator size="small" color={colors.primaryContainer} />
             ) : (
               searchQuery.length > 0 && (
-                <TouchableOpacity onPress={() => { setSearchQuery(''); setPredictions([]); setShowPredictions(false); }}>
+                <TouchableOpacity
+                  onPress={() => {
+                    setSearchQuery('');
+                    setPredictions([]);
+                    setShowPredictions(false);
+                  }}
+                >
                   <Ionicons name="close-circle" size={18} color={colors.outline} />
                 </TouchableOpacity>
               )
             )}
           </View>
 
-          {/* Autocomplete Predictions Dropdown List */}
+          {/* Autocomplete Predictions Dropdown */}
           {showPredictions && predictions.length > 0 && (
             <View style={styles.predictionsDropdown}>
               <FlatList
                 data={predictions}
-                keyExtractor={(item, index) => `${item.place_id}_${index}`}
+                keyExtractor={(item) => item.id}
                 keyboardShouldPersistTaps="handled"
                 renderItem={({ item }) => (
                   <TouchableOpacity
@@ -375,7 +498,16 @@ export default function MapAddressPickerModal({
                     onPress={() => handleSelectPrediction(item)}
                   >
                     <Ionicons name="location-sharp" size={18} color="#EA4335" style={{ marginRight: 10 }} />
-                    <Text style={styles.predictionText} numberOfLines={2}>{item.display_name}</Text>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.predictionTitle} numberOfLines={1}>
+                        {item.title}
+                      </Text>
+                      {item.subtitle ? (
+                        <Text style={styles.predictionSubtitle} numberOfLines={1}>
+                          {item.subtitle}
+                        </Text>
+                      ) : null}
+                    </View>
                   </TouchableOpacity>
                 )}
               />
@@ -383,7 +515,7 @@ export default function MapAddressPickerModal({
           )}
         </View>
 
-        {/* Interactive Map WebView */}
+        {/* Interactive Map Area */}
         <View style={styles.mapContainer}>
           <WebView
             ref={webViewRef}
@@ -396,7 +528,21 @@ export default function MapAddressPickerModal({
             originWhitelist={['*']}
           />
 
-          {/* Google Maps Controls: Zoom In / Zoom Out / My GPS Location */}
+          {/* Center Red Google-Style Pin */}
+          <View pointerEvents="none" style={styles.centerPinWrapper}>
+            <View style={styles.pinMarker} />
+            <View style={styles.pinShadow} />
+          </View>
+
+          {/* Resolving indicator chip */}
+          {resolvingAddress && (
+            <View style={styles.resolvingBadge}>
+              <ActivityIndicator size="small" color="#FFFFFF" style={{ marginRight: 6 }} />
+              <Text style={styles.resolvingBadgeText}>Resolving Address...</Text>
+            </View>
+          )}
+
+          {/* Floating Zoom Controls */}
           <View style={styles.floatingControls}>
             <TouchableOpacity style={styles.controlBtn} onPress={() => handleZoom('in')}>
               <Ionicons name="add" size={22} color={colors.onSurface} />
@@ -407,6 +553,7 @@ export default function MapAddressPickerModal({
             </TouchableOpacity>
           </View>
 
+          {/* Floating GPS Locate Button */}
           <TouchableOpacity
             style={styles.gpsButton}
             onPress={() => handleGetCurrentLocation(false)}
@@ -418,6 +565,15 @@ export default function MapAddressPickerModal({
               <Ionicons name="locate" size={24} color="#4285F4" />
             )}
           </TouchableOpacity>
+
+          {/* Lynko App Logo Watermark */}
+          <View pointerEvents="none" style={styles.mapWatermark}>
+            <Image
+              source={require('../../assets/lynko-logo.jpg')}
+              style={styles.watermarkLogo}
+              resizeMode="contain"
+            />
+          </View>
         </View>
 
         {/* Bottom Location Address Confirmation Card */}
@@ -429,7 +585,7 @@ export default function MapAddressPickerModal({
             <View style={{ flex: 1, marginLeft: 12 }}>
               <Text style={styles.addressTitle}>SELECTED SITE ADDRESS</Text>
               <Text style={styles.addressText} numberOfLines={2}>
-                {selectedAddress || 'Drop pin on site location'}
+                {selectedAddress || 'Pan map to drop pin on site'}
               </Text>
               <Text style={styles.zipText}>Zip Code: {selectedZip || '92101'}</Text>
             </View>
@@ -458,7 +614,7 @@ const styles = StyleSheet.create({
     borderBottomColor: colors.outlineVariant,
   },
   headerBtn: { padding: 4 },
-  headerTitle: { fontSize: 17, fontWeight: 'bold', color: colors.onSurface },
+  headerTitle: { fontSize: 16, fontWeight: 'bold', color: colors.onSurface },
   mapTypeBadge: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -497,7 +653,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     borderRadius: 8,
     marginTop: 6,
-    maxHeight: 180,
+    maxHeight: 200,
     borderWidth: 1,
     borderColor: '#CBD5E1',
     shadowColor: '#000',
@@ -514,9 +670,59 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#F1F5F9',
   },
-  predictionText: { fontSize: 13, color: colors.onSurface, flex: 1, fontWeight: '500' },
+  predictionTitle: { fontSize: 13, color: colors.onSurface, fontWeight: '600' },
+  predictionSubtitle: { fontSize: 12, color: colors.secondary, marginTop: 1 },
   mapContainer: { flex: 1, position: 'relative' },
   webView: { flex: 1 },
+  centerPinWrapper: {
+    position: 'absolute',
+    top: '50%',
+    left: '50%',
+    marginLeft: -19,
+    marginTop: -38,
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 5,
+  },
+  pinMarker: {
+    width: 38,
+    height: 38,
+    backgroundColor: '#EA4335',
+    borderWidth: 3.5,
+    borderColor: '#FFFFFF',
+    borderRadius: 19,
+    borderBottomRightRadius: 0,
+    transform: [{ rotate: '-45deg' }],
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.35,
+    shadowRadius: 6,
+    elevation: 6,
+  },
+  pinShadow: {
+    width: 14,
+    height: 6,
+    backgroundColor: 'rgba(0,0,0,0.25)',
+    borderRadius: 7,
+    marginTop: 4,
+    transform: [{ scaleX: 1.5 }],
+  },
+  resolvingBadge: {
+    position: 'absolute',
+    top: 14,
+    alignSelf: 'center',
+    backgroundColor: 'rgba(15, 23, 42, 0.82)',
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    shadowColor: '#000',
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 4,
+  },
+  resolvingBadgeText: { color: '#FFFFFF', fontSize: 12, fontWeight: '600' },
   floatingControls: {
     position: 'absolute',
     right: 16,
@@ -584,4 +790,24 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   confirmBtnText: { color: '#FFFFFF', fontSize: 16, fontWeight: 'bold' },
+  mapWatermark: {
+    position: 'absolute',
+    bottom: 16,
+    left: 14,
+    backgroundColor: 'rgba(255, 255, 255, 0.92)',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.12,
+    shadowRadius: 3,
+    elevation: 3,
+  },
+  watermarkLogo: {
+    width: 64,
+    height: 20,
+  },
 });

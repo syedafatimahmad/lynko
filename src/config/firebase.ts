@@ -7,12 +7,12 @@ import { Platform } from 'react-native';
 declare const process: any;
 
 const firebaseConfig = {
-  apiKey: process.env.EXPO_PUBLIC_FIREBASE_API_KEY || "AIzaSyDFQnZ4e12BL7om8rwhPK-mqXIPnEIwPO8",
-  authDomain: process.env.EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN || "lynko-2fbef.firebaseapp.com",
-  projectId: process.env.EXPO_PUBLIC_FIREBASE_PROJECT_ID || "lynko-2fbef",
-  storageBucket: process.env.EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET || "lynko-2fbef.firebasestorage.app",
-  messagingSenderId: process.env.EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID || "429476843085",
-  appId: process.env.EXPO_PUBLIC_FIREBASE_APP_ID || "1:429476843085:web:f116ede27fde2e67a29604"
+  apiKey: process.env.EXPO_PUBLIC_FIREBASE_API_KEY || "AIzaSyDTwKmQx9NLiC9sHSutYoNe5sw5m3wd340",
+  authDomain: process.env.EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN || "lynko-797df.firebaseapp.com",
+  projectId: process.env.EXPO_PUBLIC_FIREBASE_PROJECT_ID || "lynko-797df",
+  storageBucket: process.env.EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET || "lynko-797df.firebasestorage.app",
+  messagingSenderId: process.env.EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID || "12808282527",
+  appId: process.env.EXPO_PUBLIC_FIREBASE_APP_ID || "1:12808282527:web:9bf5cccc9e9fd2d6a7ddaa"
 };
 
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();

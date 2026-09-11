@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { doc, setDoc, deleteDoc, collection, getDocs, getDoc } from 'firebase/firestore';
+import { doc, setDoc, deleteDoc, collection, getDocs, getDoc, writeBatch } from 'firebase/firestore';
 import { db, auth } from '../config/firebase';
 
 export interface Project {
@@ -304,13 +304,18 @@ export const useLynkoStore = create<LynkoState>()(
         set({ samples: updatedSamples });
 
         if (auth.currentUser) {
-          try {
-            for (const s of updatedSamples) {
-              await setDoc(doc(db, 'users', auth.currentUser.uid, 'samples', s.id), s, { merge: true });
+          const uid = auth.currentUser.uid;
+          (async () => {
+            try {
+              const batch = writeBatch(db);
+              for (const s of updatedSamples) {
+                batch.set(doc(db, 'users', uid, 'samples', s.id), s, { merge: true });
+              }
+              await batch.commit();
+            } catch (e) {
+              console.warn('Firestore sync deferred:', e);
             }
-          } catch (e) {
-            console.warn('Firestore sync deferred:', e);
-          }
+          })();
         }
       },
 
@@ -322,21 +327,21 @@ export const useLynkoStore = create<LynkoState>()(
         );
 
         let updatedProjects: Project[];
+        let targetProject: Project;
         if (matchingProject) {
+          targetProject = { 
+            ...matchingProject, 
+            status: 'Submitted' as const, 
+            samplesCount: sub.samplesCount,
+            pdfUri: sub.pdfUri,
+            submittedAt: sub.submittedAt,
+            recipientEmail: sub.recipientEmail
+          };
           updatedProjects = currentProjects.map(p => 
-            p.id === matchingProject.id 
-              ? { 
-                  ...p, 
-                  status: 'Submitted' as const, 
-                  samplesCount: sub.samplesCount,
-                  pdfUri: sub.pdfUri,
-                  submittedAt: sub.submittedAt,
-                  recipientEmail: sub.recipientEmail
-                } 
-              : p
+            p.id === matchingProject.id ? targetProject : p
           );
         } else {
-          const newProj: Project = {
+          targetProject = {
             id: sub.projectId || `proj_${Date.now()}`,
             poNumber: sub.poNumber || 'N/A',
             title: sub.projectTitle || 'Field Inspection CoC',
@@ -350,23 +355,28 @@ export const useLynkoStore = create<LynkoState>()(
             submittedAt: sub.submittedAt,
             recipientEmail: sub.recipientEmail,
           };
-          updatedProjects = [newProj, ...currentProjects];
+          updatedProjects = [targetProject, ...currentProjects];
         }
 
+        // Instant local state update (<1ms)
         set((state) => ({ 
           submissions: [sub, ...state.submissions],
           projects: updatedProjects,
         }));
 
+        // Non-blocking background Firestore sync of ONLY the submission and the target project
         if (auth.currentUser) {
-          try {
-            await setDoc(doc(db, 'users', auth.currentUser.uid, 'submissions', sub.id), sub);
-            for (const p of updatedProjects) {
-              await setDoc(doc(db, 'users', auth.currentUser.uid, 'projects', p.id), p, { merge: true });
+          const uid = auth.currentUser.uid;
+          (async () => {
+            try {
+              await Promise.all([
+                setDoc(doc(db, 'users', uid, 'submissions', sub.id), sub),
+                setDoc(doc(db, 'users', uid, 'projects', targetProject.id), targetProject, { merge: true }),
+              ]);
+            } catch (e) {
+              console.warn('Firestore submission sync deferred:', e);
             }
-          } catch (e) {
-            console.warn('Firestore submission sync deferred:', e);
-          }
+          })();
         }
       },
 
@@ -375,11 +385,12 @@ export const useLynkoStore = create<LynkoState>()(
         const sub = updatedSubmissions.find(s => s.id === id);
         
         let updatedProjects = get().projects;
+        let matchingProj: Project | undefined;
         if (sub) {
-          const matchingProj = updatedProjects.find(p => p.poNumber && p.poNumber === sub.poNumber);
+          matchingProj = updatedProjects.find(p => p.poNumber && p.poNumber === sub.poNumber);
           if (matchingProj) {
             const projStatus: 'Draft' | 'Submitted' = 'Submitted';
-            updatedProjects = updatedProjects.map(p => p.id === matchingProj.id ? { ...p, status: projStatus } : p);
+            updatedProjects = updatedProjects.map(p => p.id === matchingProj!.id ? { ...p, status: projStatus } : p);
           }
         }
 
@@ -390,25 +401,33 @@ export const useLynkoStore = create<LynkoState>()(
 
         const updated = updatedSubmissions.find(s => s.id === id);
         if (auth.currentUser && updated) {
-          try {
-            await setDoc(doc(db, 'users', auth.currentUser.uid, 'submissions', id), updated, { merge: true });
-            for (const p of updatedProjects) {
-              await setDoc(doc(db, 'users', auth.currentUser.uid, 'projects', p.id), p, { merge: true });
+          const uid = auth.currentUser.uid;
+          (async () => {
+            try {
+              const promises: Promise<any>[] = [
+                setDoc(doc(db, 'users', uid, 'submissions', id), updated, { merge: true })
+              ];
+              if (matchingProj) {
+                const targetProj = updatedProjects.find(p => p.id === matchingProj!.id);
+                if (targetProj) {
+                  promises.push(setDoc(doc(db, 'users', uid, 'projects', targetProj.id), targetProj, { merge: true }));
+                }
+              }
+              await Promise.all(promises);
+            } catch (e) {
+              console.warn('Firestore submission update deferred:', e);
             }
-          } catch (e) {
-            console.warn('Firestore submission update deferred:', e);
-          }
+          })();
         }
       },
 
       deleteSubmission: async (id) => {
         set((state) => ({ submissions: state.submissions.filter(s => s.id !== id) }));
         if (auth.currentUser) {
-          try {
-            await deleteDoc(doc(db, 'users', auth.currentUser.uid, 'submissions', id));
-          } catch (e) {
+          const uid = auth.currentUser.uid;
+          deleteDoc(doc(db, 'users', uid, 'submissions', id)).catch(e => {
             console.warn('Firestore submission delete deferred:', e);
-          }
+          });
         }
       },
 
@@ -420,13 +439,13 @@ export const useLynkoStore = create<LynkoState>()(
           return { recipientHistory: [clean, ...filtered].slice(0, 10) };
         });
         if (auth.currentUser) {
-          try {
-            await setDoc(doc(db, 'users', auth.currentUser.uid, 'settings', 'recipients'), {
-              history: get().recipientHistory
-            }, { merge: true });
-          } catch (e) {
+          const uid = auth.currentUser.uid;
+          const updatedHistory = get().recipientHistory;
+          setDoc(doc(db, 'users', uid, 'settings', 'recipients'), {
+            history: updatedHistory
+          }, { merge: true }).catch(e => {
             console.warn('Firestore recipients sync deferred:', e);
-          }
+          });
         }
       },
 

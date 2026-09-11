@@ -55,8 +55,10 @@ export default function SubmitCoCScreen({ route, navigation }: any) {
 
     setSending(true);
     try {
-      await addRecipientEmail(cleanTo);
+      // 1. Non-blocking recipient history update
+      addRecipientEmail(cleanTo);
 
+      // 2. Generate PDF
       const pdfUri = await generatePDF(null, cocData, samples);
       if (!pdfUri) {
         Alert.alert('Error', 'Failed to generate Chain of Custody PDF.');
@@ -64,27 +66,7 @@ export default function SubmitCoCScreen({ route, navigation }: any) {
         return;
       }
 
-      // 1. Check Toggle: Attach photos only if user has attachPhotosToEmail enabled
-      const attachPhotos = cocData.attachPhotosToEmail !== false;
-      const photoAttachments = attachPhotos ? (cocData.photos || []).filter(p => !!p) : [];
-      const allAttachments = [pdfUri, ...photoAttachments];
-
-      const isAvailable = await MailComposer.isAvailableAsync();
-      if (isAvailable) {
-        await MailComposer.composeAsync({
-          recipients: [cleanTo],
-          subject: subject,
-          body: message,
-          attachments: allAttachments,
-        });
-      } else if (Platform.OS === 'web') {
-        const mailto = `mailto:${cleanTo}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(message)}`;
-        window.open(mailto, '_blank');
-      } else {
-        await Print.printAsync({ uri: pdfUri });
-      }
-
-      // 2. Record Verified Submission into Store & Firestore Archive
+      // 3. Immediately record submission in local store (marks project as Submitted)
       const submissionRecord: SubmissionRecord = {
         id: `${Date.now()}_${cocData.poNumber || 'sub'}`,
         poNumber: cocData.poNumber || 'N/A',
@@ -103,7 +85,29 @@ export default function SubmitCoCScreen({ route, navigation }: any) {
 
       await addSubmission(submissionRecord);
 
-      // 3. User Success Confirmation
+      // 4. Attach photos only if user has attachPhotosToEmail enabled and valid URIs
+      const attachPhotos = cocData.attachPhotosToEmail !== false;
+      const rawPhotos = attachPhotos ? (cocData.photos || []).filter(p => !!p) : [];
+      const validPhotos = rawPhotos.filter(p => p.startsWith('file://') || p.startsWith('content://'));
+      const allAttachments = [pdfUri, ...validPhotos];
+
+      // 5. Open mail client
+      const isAvailable = await MailComposer.isAvailableAsync();
+      if (isAvailable) {
+        await MailComposer.composeAsync({
+          recipients: [cleanTo],
+          subject: subject,
+          body: message,
+          attachments: allAttachments,
+        });
+      } else if (Platform.OS === 'web') {
+        const mailto = `mailto:${cleanTo}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(message)}`;
+        window.open(mailto, '_blank');
+      } else {
+        await Print.printAsync({ uri: pdfUri });
+      }
+
+      // 6. User Success Confirmation
       Alert.alert(
         'Chain of Custody Submitted',
         `Successfully sent to ${cleanTo}.\n\nYour project is now updated and listed in the 'Submitted' tab with its PDF document.`,

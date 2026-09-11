@@ -85,6 +85,11 @@ export const generatePDF = async (project: Project | null, cocData: CoCData, sam
 
       pagesHtml += `
         <div class="page" ${hasNextPage ? 'style="page-break-after: always;"' : ''}>
+          <!-- Background Lynko Logo Watermark -->
+          <div class="watermark-bg">
+            <img src="${lynkoLogoBase64}" style="width: 340px; opacity: 0.05;" />
+          </div>
+
           <!-- Header Logos -->
           <table style="margin-bottom: -1px;">
             <tr>
@@ -204,6 +209,18 @@ export const generatePDF = async (project: Project | null, cocData: CoCData, sam
               margin: 0;
               padding: 0;
               color: #111;
+            }
+            .page {
+              position: relative;
+              overflow: hidden;
+            }
+            .watermark-bg {
+              position: absolute;
+              top: 50%;
+              left: 50%;
+              transform: translate(-50%, -50%) rotate(-25deg);
+              pointer-events: none;
+              z-index: 0;
             }
             table {
               width: 100%;

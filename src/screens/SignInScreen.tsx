@@ -14,7 +14,12 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { GoogleSignin, statusCodes } from '@react-native-google-signin/google-signin';
+import { 
+  getGoogleSignin, 
+  getStatusCodes, 
+  configureGoogleSignin, 
+  isNativeGoogleSigninAvailable 
+} from '../services/googleSignInHelper';
 import { 
   signUpWithEmail, 
   signInWithEmail, 
@@ -30,15 +35,8 @@ import { useLynkoStore } from '../store/lynkoStore';
 import { colors } from '../theme/colors';
 import { auth } from '../config/firebase';
 
-if (Platform.OS !== 'web') {
-  try {
-    GoogleSignin.configure({
-      webClientId: '429476843085-69p861nle0eqn9r8mbl2n5d5l9kpia7r.apps.googleusercontent.com',
-      offlineAccess: false,
-    });
-  } catch (e) {
-    console.warn('GoogleSignin configure notice:', e);
-  }
+if (Platform.OS !== 'web' && isNativeGoogleSigninAvailable()) {
+  configureGoogleSignin('429476843085-69p861nle0eqn9r8mbl2n5d5l9kpia7r.apps.googleusercontent.com');
 }
 
 export default function SignInScreen() {
@@ -227,6 +225,18 @@ export default function SignInScreen() {
         setLoading(false);
       }
     } else {
+      if (!isNativeGoogleSigninAvailable()) {
+        setLoading(false);
+        Alert.alert(
+          'Expo Go Notice',
+          'Native Google Sign-In requires a standalone build or development build (APK).\n\nTo test in Expo Go, please sign in with your Email and Password above.'
+        );
+        return;
+      }
+
+      const GoogleSignin = getGoogleSignin();
+      const statusCodes = getStatusCodes();
+
       try {
         await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
         

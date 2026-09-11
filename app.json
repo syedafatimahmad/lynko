@@ -14,6 +14,11 @@
     "android": {
       "package": "com.lynko.app",
       "googleServicesFile": "./google-services.json",
+      "config": {
+        "googleMaps": {
+          "apiKey": "AIzaSyAwB-drXivEY57xD7JBGHWAfE6LjwdOapY"
+        }
+      },
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/android-icon-foreground.png",
