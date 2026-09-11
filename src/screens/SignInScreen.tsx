@@ -272,6 +272,8 @@ export default function SignInScreen() {
           // Sign in is in progress already
         } else if (err.code === statusCodes.PLAY_SERVICES_NOT_AVAILABLE) {
           setError('Google Play Services is not available or outdated.');
+        } else if (err?.code === '10' || err?.code === 10 || err?.message?.includes('DEVELOPER_ERROR')) {
+          setError('Google Sign-In configuration notice: The Android SHA-1 fingerprint needs to be added to Firebase Console under Project Settings > com.lynko.app. You can sign in immediately using your Email and Password above.');
         } else if (err?.code === 'auth/invalid-credential') {
           setError('Google Sign-In credential verification failed. Please verify that the SHA-1 certificate is added in Firebase Console.');
         } else {
