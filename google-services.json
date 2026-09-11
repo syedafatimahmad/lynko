@@ -12,7 +12,12 @@
           "package_name": "com.lynko.app"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "12808282527-mv6kltqjqj24i2rdt8ckh0oj8si3duqb.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyAwB-drXivEY57xD7JBGHWAfE6LjwdOapY"
@@ -20,7 +25,12 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "12808282527-mv6kltqjqj24i2rdt8ckh0oj8si3duqb.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
         }
       }
     }
