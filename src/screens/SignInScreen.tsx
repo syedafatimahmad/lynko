@@ -242,6 +242,7 @@ export default function SignInScreen() {
       const statusCodes = getStatusCodes();
 
       try {
+        configureGoogleSignin(GOOGLE_WEB_CLIENT_ID);
         await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
         
         // Force account chooser by clearing any cached account session
