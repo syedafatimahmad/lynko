@@ -14,6 +14,22 @@
       },
       "oauth_client": [
         {
+          "client_id": "12808282527-2t2lahlct3hfjlo0fk35h4ss858goi05.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.lynko.app",
+            "certificate_hash": "2ca76f513c18c2b0cbc55507c5d189a073dde761"
+          }
+        },
+        {
+          "client_id": "12808282527-h9i500p8q4ivvlrdpbu8tc8ke8ucq058.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.lynko.app",
+            "certificate_hash": "0c3e5b39b6b32a38bb94ea7fbb7cf6cd6a894385"
+          }
+        },
+        {
           "client_id": "12808282527-mv6kltqjqj24i2rdt8ckh0oj8si3duqb.apps.googleusercontent.com",
           "client_type": 3
         }

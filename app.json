@@ -3,17 +3,28 @@
     "name": "Lynko",
     "slug": "lynko",
     "scheme": "lynko",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#FFFFFF"
+    },
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.lynko.app"
     },
     "android": {
       "package": "com.lynko.app",
+      "versionCode": 2,
       "googleServicesFile": "./google-services.json",
+      "splash": {
+        "image": "./assets/splash-icon.png",
+        "resizeMode": "contain",
+        "backgroundColor": "#FFFFFF"
+      },
       "config": {
         "googleMaps": {
           "apiKey": "AIzaSyAwB-drXivEY57xD7JBGHWAfE6LjwdOapY"
