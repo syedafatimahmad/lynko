@@ -11,7 +11,8 @@ export default function NewProjectScreen({ navigation }: any) {
   const addProject = useLynkoStore((state) => state.addProject);
   
   const [po, setPo] = useState('');
-  const [title, setTitle] = useState('');
+  const [projectType, setProjectType] = useState<'Mold' | 'Asbestos' | 'Both'>('Mold');
+  const [title, setTitle] = useState('Mold Inspection');
   const [address, setAddress] = useState('');
   const [zip, setZip] = useState('');
   const [desc, setDesc] = useState('');
@@ -24,6 +25,7 @@ export default function NewProjectScreen({ navigation }: any) {
       id: Date.now().toString(),
       poNumber: po,
       title,
+      projectType,
       address,
       zipCode: zip,
       description: desc,
@@ -46,6 +48,45 @@ export default function NewProjectScreen({ navigation }: any) {
       </View>
 
       <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
+        <View style={styles.inputGroup}>
+          <Text style={styles.label}>Project Scope / Type *</Text>
+          <View style={styles.typeSelectorRow}>
+            {(['Mold', 'Asbestos', 'Both'] as const).map((type) => {
+              const isSelected = projectType === type;
+              return (
+                <TouchableOpacity
+                  key={type}
+                  style={[styles.typeBadge, isSelected && styles.typeBadgeSelected]}
+                  onPress={() => {
+                    setProjectType(type);
+                    if (
+                      !title ||
+                      title === 'Mold Inspection' ||
+                      title === 'Asbestos Inspection' ||
+                      title === 'Mold & Asbestos Inspection'
+                    ) {
+                      if (type === 'Mold') setTitle('Mold Inspection');
+                      else if (type === 'Asbestos') setTitle('Asbestos Inspection');
+                      else setTitle('Mold & Asbestos Inspection');
+                    }
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons
+                    name={type === 'Mold' ? 'leaf-outline' : type === 'Asbestos' ? 'construct-outline' : 'layers-outline'}
+                    size={16}
+                    color={isSelected ? colors.onPrimary : colors.onSurfaceVariant}
+                    style={{ marginRight: 6 }}
+                  />
+                  <Text style={[styles.typeBadgeText, isSelected && styles.typeBadgeTextSelected]}>
+                    {type}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </View>
+
         <View style={styles.inputGroup}>
           <Text style={styles.label}>PO Number *</Text>
           <TextInput 
@@ -178,6 +219,35 @@ const styles = StyleSheet.create({
     borderColor: colors.outlineVariant,
     marginTop: 10,
     marginBottom: 30,
+  },
+  typeSelectorRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  typeBadge: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 8,
+    borderRadius: 8,
+    backgroundColor: colors.surfaceContainerLowest,
+    borderWidth: 1,
+    borderColor: colors.outlineVariant,
+  },
+  typeBadgeSelected: {
+    backgroundColor: colors.primaryContainer,
+    borderColor: colors.primaryContainer,
+  },
+  typeBadgeText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.onSurfaceVariant,
+  },
+  typeBadgeTextSelected: {
+    color: colors.onPrimary,
+    fontWeight: '700',
   },
   buttonText: { color: colors.onPrimary, fontSize: 16, fontWeight: 'bold' },
 });

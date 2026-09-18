@@ -8,6 +8,7 @@ export interface Project {
   id: string;
   poNumber: string;
   title: string;
+  projectType?: 'Mold' | 'Asbestos' | 'Both';
   address: string;
   samplesCount: number;
   status: 'Draft' | 'Submitted';
@@ -25,11 +26,12 @@ export interface SampleItem {
   analysis1Enabled: boolean;
   analysis2Enabled: boolean;
   description: string;
-  property: string;
-  measurement: string;
+  property?: string;
+  measurement?: string;
   unit?: string;
   notes: string;
   photoUri?: string;
+  photoUris?: string[];
 }
 
 export interface EquipmentItem {

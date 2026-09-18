@@ -57,37 +57,47 @@ export default function ChainOfCustodyScreen({ navigation }: any) {
   };
 
   const handleTakePhoto = async () => {
-    const permissionResult = await ImagePicker.requestCameraPermissionsAsync();
-    if (!permissionResult.granted) {
-      Alert.alert("Permission Required", "Camera access is required to take site photos.");
-      return;
-    }
+    try {
+      const permissionResult = await ImagePicker.requestCameraPermissionsAsync();
+      if (!permissionResult.granted) {
+        Alert.alert("Permission Required", "Camera access is required to take site photos.");
+        return;
+      }
 
-    const result = await ImagePicker.launchCameraAsync({
-      allowsEditing: false,
-      quality: 0.8,
-    });
+      const result = await ImagePicker.launchCameraAsync({
+        allowsEditing: false,
+        quality: 0.8,
+      });
 
-    if (!result.canceled && result.assets[0]) {
-      updateCoCData({ photos: [...photos, result.assets[0].uri] });
+      if (!result.canceled && result.assets[0]) {
+        updateCoCData({ photos: [...photos, result.assets[0].uri] });
+      }
+    } catch (err: any) {
+      console.error("Camera error:", err);
+      Alert.alert("Camera Error", err?.message || "Failed to open camera.");
     }
   };
 
   const handlePickPhoto = async () => {
-    const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!permissionResult.granted) {
-      Alert.alert("Permission Required", "Photo library access is required to select photos.");
-      return;
-    }
+    try {
+      const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!permissionResult.granted) {
+        Alert.alert("Permission Required", "Photo library access is required to select photos.");
+        return;
+      }
 
-    const result = await ImagePicker.launchImageLibraryAsync({
-      allowsMultipleSelection: true,
-      quality: 0.8,
-    });
+      const result = await ImagePicker.launchImageLibraryAsync({
+        allowsMultipleSelection: true,
+        quality: 0.8,
+      });
 
-    if (!result.canceled && result.assets.length > 0) {
-      const newUris = result.assets.map(a => a.uri);
-      updateCoCData({ photos: [...photos, ...newUris] });
+      if (!result.canceled && result.assets.length > 0) {
+        const newUris = result.assets.map(a => a.uri);
+        updateCoCData({ photos: [...photos, ...newUris] });
+      }
+    } catch (err: any) {
+      console.error("Gallery error:", err);
+      Alert.alert("Gallery Error", err?.message || "Failed to open photo library.");
     }
   };
 

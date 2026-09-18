@@ -1,11 +1,13 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, Switch, TextInput, Alert, Modal } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, Switch, TextInput, Alert, Modal, Image, ScrollView } from 'react-native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import * as ImagePicker from 'expo-image-picker';
 import { useLynkoStore, SampleItem } from '../store/lynkoStore';
 import { colors } from '../theme/colors';
 import { Ionicons } from '@expo/vector-icons';
 
 export default function EditSamplesScreen({ navigation }: any) {
+  const insets = useSafeAreaInsets();
   const samples = useLynkoStore((state) => state.samples);
   const updateSample = useLynkoStore((state) => state.updateSample);
   const cocData = useLynkoStore((state) => state.cocData);
@@ -20,11 +22,63 @@ export default function EditSamplesScreen({ navigation }: any) {
 
   // Quick Auto-fill modal state
   const [autoFillModalVisible, setAutoFillModalVisible] = useState(false);
-  const [autoFillType, setAutoFillType] = useState<'sampleId' | 'description' | 'measurement' | 'unit'>('description');
+  const [autoFillType, setAutoFillType] = useState<'sampleId' | 'description'>('description');
   const [autoFillInput, setAutoFillInput] = useState('');
 
   const toggleNotes = (id: string) => {
     setExpandedNotes(prev => ({ ...prev, [id]: !prev[id] }));
+  };
+
+  const handleTakeSamplePhoto = async (sampleId: string) => {
+    try {
+      const permissionResult = await ImagePicker.requestCameraPermissionsAsync();
+      if (!permissionResult.granted) {
+        Alert.alert("Permission Required", "Camera access is required to take sample photos.");
+        return;
+      }
+      const result = await ImagePicker.launchCameraAsync({
+        allowsEditing: false,
+        quality: 0.8,
+      });
+      if (!result.canceled && result.assets && result.assets[0]) {
+        const currentSample = samples.find(s => s.id === sampleId);
+        const currentPhotos = currentSample?.photoUris || [];
+        updateSample(sampleId, { photoUris: [...currentPhotos, result.assets[0].uri] });
+      }
+    } catch (error: any) {
+      console.error('Error taking photo for sample:', error);
+      Alert.alert('Camera Error', error?.message || 'Failed to open camera.');
+    }
+  };
+
+  const handlePickSamplePhoto = async (sampleId: string) => {
+    try {
+      const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!permissionResult.granted) {
+        Alert.alert("Permission Required", "Photo library access is required to select photos.");
+        return;
+      }
+      const result = await ImagePicker.launchImageLibraryAsync({
+        allowsMultipleSelection: true,
+        quality: 0.8,
+      });
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        const newUris = result.assets.map(a => a.uri);
+        const currentSample = samples.find(s => s.id === sampleId);
+        const currentPhotos = currentSample?.photoUris || [];
+        updateSample(sampleId, { photoUris: [...currentPhotos, ...newUris] });
+      }
+    } catch (error: any) {
+      console.error('Error picking photo for sample:', error);
+      Alert.alert('Gallery Error', error?.message || 'Failed to open photo library.');
+    }
+  };
+
+  const handleRemoveSamplePhoto = (sampleId: string, photoIndex: number) => {
+    const currentSample = samples.find(s => s.id === sampleId);
+    const currentPhotos = currentSample?.photoUris || [];
+    const updated = currentPhotos.filter((_, idx) => idx !== photoIndex);
+    updateSample(sampleId, { photoUris: updated });
   };
 
   const handleSaveAll = async () => {
@@ -37,13 +91,13 @@ export default function EditSamplesScreen({ navigation }: any) {
     navigation.goBack();
   };
 
-  const handleTriggerAutoFill = (type: 'sampleId' | 'description' | 'measurement' | 'unit') => {
+  const handleTriggerAutoFill = (type: 'sampleId' | 'description') => {
     if (type === 'sampleId') {
       autoFillField('sampleId');
       Alert.alert('Auto Fill', 'Sample IDs sequentially re-numbered (1, 2, 3...).');
     } else {
       setAutoFillType(type);
-      setAutoFillInput(type === 'measurement' ? '0' : type === 'unit' ? 'N/A' : '');
+      setAutoFillInput('');
       setAutoFillModalVisible(true);
     }
   };
@@ -130,22 +184,6 @@ export default function EditSamplesScreen({ navigation }: any) {
             <Ionicons name="text-outline" size={16} color={colors.primary} style={{ marginRight: 6 }} />
             <Text style={styles.autoFillBtnText}>Description</Text>
           </TouchableOpacity>
-
-          <TouchableOpacity 
-            style={styles.autoFillBtn} 
-            onPress={() => handleTriggerAutoFill('measurement')}
-          >
-            <Ionicons name="speedometer-outline" size={16} color={colors.primary} style={{ marginRight: 6 }} />
-            <Text style={styles.autoFillBtnText}>Measurement</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity 
-            style={styles.autoFillBtn} 
-            onPress={() => handleTriggerAutoFill('unit')}
-          >
-            <Ionicons name="cube-outline" size={16} color={colors.primary} style={{ marginRight: 6 }} />
-            <Text style={styles.autoFillBtnText}>Unit (N/A, L, sq ft)</Text>
-          </TouchableOpacity>
         </View>
       </View>
 
@@ -210,37 +248,53 @@ export default function EditSamplesScreen({ navigation }: any) {
           </View>
         </View>
 
-        {/* Property & Measurement / Unit */}
-        <View style={styles.row}>
-          <View style={[styles.inputGroup, { flex: 1.2, marginRight: 8 }]}>
-            <Text style={styles.inputLabel}>Property / Material</Text>
-            <TextInput
-              style={styles.input}
-              value={item.property}
-              onChangeText={(val) => updateSample(item.id, { property: val })}
-              placeholder="None / Bulk"
-            />
+        {/* Specific Sample Photos Section */}
+        <View style={styles.samplePhotoSection}>
+          <View style={styles.samplePhotoHeader}>
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <Ionicons name="images-outline" size={15} color={colors.primaryContainer} style={{ marginRight: 5 }} />
+              <Text style={styles.samplePhotoSectionTitle}>
+                Sample Photos ({item.photoUris?.length || 0})
+              </Text>
+            </View>
+            <View style={styles.samplePhotoActions}>
+              <TouchableOpacity
+                style={styles.photoActionBtn}
+                onPress={() => handleTakeSamplePhoto(item.id)}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="camera" size={13} color={colors.primaryContainer} style={{ marginRight: 3 }} />
+                <Text style={styles.photoActionBtnText}>Camera</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.photoActionBtn}
+                onPress={() => handlePickSamplePhoto(item.id)}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="images" size={13} color={colors.primaryContainer} style={{ marginRight: 3 }} />
+                <Text style={styles.photoActionBtnText}>Gallery</Text>
+              </TouchableOpacity>
+            </View>
           </View>
 
-          <View style={[styles.inputGroup, { flex: 0.9, marginRight: 6 }]}>
-            <Text style={styles.inputLabel}>Measurement</Text>
-            <TextInput
-              style={styles.input}
-              value={item.measurement}
-              onChangeText={(val) => updateSample(item.id, { measurement: val })}
-              placeholder="0"
-            />
-          </View>
-
-          <View style={[styles.inputGroup, { flex: 0.8 }]}>
-            <Text style={styles.inputLabel}>Unit</Text>
-            <TextInput
-              style={styles.input}
-              value={item.unit || 'N/A'}
-              onChangeText={(val) => updateSample(item.id, { unit: val })}
-              placeholder="N/A"
-            />
-          </View>
+          {item.photoUris && item.photoUris.length > 0 ? (
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.photoThumbnailScroll}>
+              {item.photoUris.map((uri, pIdx) => (
+                <View key={`${uri}-${pIdx}`} style={styles.thumbnailWrapper}>
+                  <Image source={{ uri }} style={styles.sampleThumbnail} />
+                  <TouchableOpacity
+                    style={styles.removeThumbnailBtn}
+                    onPress={() => handleRemoveSamplePhoto(item.id, pIdx)}
+                    hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                  >
+                    <Ionicons name="close" size={12} color="#FFF" />
+                  </TouchableOpacity>
+                </View>
+              ))}
+            </ScrollView>
+          ) : (
+            <Text style={styles.noPhotosText}>No photos attached to this sample yet</Text>
+          )}
         </View>
 
         {/* Expandable Notes Link */}
@@ -293,12 +347,15 @@ export default function EditSamplesScreen({ navigation }: any) {
         keyExtractor={(item) => item.id}
         ListHeaderComponent={renderHeader}
         renderItem={renderSampleItem}
-        contentContainerStyle={styles.scrollList}
+        contentContainerStyle={[
+          styles.scrollList,
+          { paddingBottom: insets.bottom > 0 ? insets.bottom + 80 : 80 }
+        ]}
         showsVerticalScrollIndicator={false}
       />
 
       {/* Floating Bottom Action Bar */}
-      <View style={styles.bottomBar}>
+      <View style={[styles.bottomBar, { paddingBottom: insets.bottom > 0 ? insets.bottom + 8 : 12 }]}>
         <TouchableOpacity style={styles.applyButton} onPress={handleSaveAll}>
           <Ionicons name="checkmark-done" size={20} color="#fff" style={{ marginRight: 8 }} />
           <Text style={styles.applyButtonText}>Save & Done</Text>
@@ -495,6 +552,77 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
     color: colors.secondary,
+  },
+  samplePhotoSection: {
+    backgroundColor: '#F8FAFC',
+    borderRadius: 8,
+    padding: 10,
+    marginTop: 4,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  samplePhotoHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  samplePhotoSectionTitle: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.onSurface,
+  },
+  samplePhotoActions: {
+    flexDirection: 'row',
+    gap: 6,
+  },
+  photoActionBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: colors.primaryContainer,
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  photoActionBtnText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: colors.primaryContainer,
+  },
+  photoThumbnailScroll: {
+    flexDirection: 'row',
+    paddingVertical: 4,
+  },
+  thumbnailWrapper: {
+    position: 'relative',
+    marginRight: 8,
+  },
+  sampleThumbnail: {
+    width: 60,
+    height: 60,
+    borderRadius: 6,
+    backgroundColor: '#E2E8F0',
+  },
+  removeThumbnailBtn: {
+    position: 'absolute',
+    top: -4,
+    right: -4,
+    backgroundColor: '#EF4444',
+    borderRadius: 10,
+    width: 18,
+    height: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#FFFFFF',
+  },
+  noPhotosText: {
+    fontSize: 11,
+    color: colors.outline,
+    fontStyle: 'italic',
+    paddingVertical: 4,
   },
   notesToggleRow: {
     flexDirection: 'row',
