@@ -13,12 +13,10 @@ import {
   ActivityIndicator 
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import * as ImagePicker from 'expo-image-picker';
 import { useLynkoStore } from '../store/lynkoStore';
 import { colors } from '../theme/colors';
 import { generatePDF } from '../utils/pdfGenerator';
 import SignatureModal from '../components/SignatureModal';
-import ImageEditorModal from '../components/ImageEditorModal';
 import MapAddressPickerModal from '../components/MapAddressPickerModal';
 import { Ionicons } from '@expo/vector-icons';
 import * as Print from 'expo-print';
@@ -30,15 +28,11 @@ export default function ChainOfCustodyScreen({ navigation }: any) {
   const samples = useLynkoStore((state) => state.samples);
   const [showSignature, setShowSignature] = useState(false);
   const [showMapPicker, setShowMapPicker] = useState(false);
-  const [showImageEditor, setShowImageEditor] = useState(false);
-  const [editingPhotoIndex, setEditingPhotoIndex] = useState<number | null>(null);
   const [saveTemplate, setSaveTemplate] = useState(false);
   const [tosAgreed, setTosAgreed] = useState(false);
   const [isEditingContacts, setIsEditingContacts] = useState(false);
   const [previewing, setPreviewing] = useState(false);
   const [errors, setErrors] = useState<{ [key: string]: string }>({});
-
-  const photos = cocData.photos || [];
 
   const clearError = (field: string) => {
     if (errors[field]) {
@@ -54,71 +48,6 @@ export default function ChainOfCustodyScreen({ navigation }: any) {
     updateCoCData({ inspectorSignature: sig });
     clearError('signature');
     setShowSignature(false);
-  };
-
-  const handleTakePhoto = async () => {
-    try {
-      const permissionResult = await ImagePicker.requestCameraPermissionsAsync();
-      if (!permissionResult.granted) {
-        Alert.alert("Permission Required", "Camera access is required to take site photos.");
-        return;
-      }
-
-      const result = await ImagePicker.launchCameraAsync({
-        allowsEditing: false,
-        quality: 0.8,
-      });
-
-      if (!result.canceled && result.assets[0]) {
-        updateCoCData({ photos: [...photos, result.assets[0].uri] });
-      }
-    } catch (err: any) {
-      console.error("Camera error:", err);
-      Alert.alert("Camera Error", err?.message || "Failed to open camera.");
-    }
-  };
-
-  const handlePickPhoto = async () => {
-    try {
-      const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (!permissionResult.granted) {
-        Alert.alert("Permission Required", "Photo library access is required to select photos.");
-        return;
-      }
-
-      const result = await ImagePicker.launchImageLibraryAsync({
-        allowsMultipleSelection: true,
-        quality: 0.8,
-      });
-
-      if (!result.canceled && result.assets.length > 0) {
-        const newUris = result.assets.map(a => a.uri);
-        updateCoCData({ photos: [...photos, ...newUris] });
-      }
-    } catch (err: any) {
-      console.error("Gallery error:", err);
-      Alert.alert("Gallery Error", err?.message || "Failed to open photo library.");
-    }
-  };
-
-  const handleRemovePhoto = (index: number) => {
-    const updated = photos.filter((_, i) => i !== index);
-    updateCoCData({ photos: updated });
-  };
-
-  const handleOpenPhotoEditor = (index: number) => {
-    setEditingPhotoIndex(index);
-    setShowImageEditor(true);
-  };
-
-  const handleSaveEditedPhoto = (editedUri: string) => {
-    if (editingPhotoIndex !== null && editingPhotoIndex >= 0) {
-      const updated = [...photos];
-      updated[editingPhotoIndex] = editedUri;
-      updateCoCData({ photos: updated });
-    }
-    setShowImageEditor(false);
-    setEditingPhotoIndex(null);
   };
 
   const handlePreviewCoC = async () => {
@@ -357,56 +286,7 @@ export default function ChainOfCustodyScreen({ navigation }: any) {
           </View>
         </View>
 
-        {/* Card 3: Project Photos */}
-        <View style={styles.card}>
-          <View style={styles.cardHeaderRow}>
-            <View style={{ flex: 1, paddingRight: 6 }}>
-              <Text style={styles.cardTitle}>Project Photos ({photos.length})</Text>
-              <Text style={styles.cardSubtitle} numberOfLines={1}>Attach site context images</Text>
-            </View>
-            <View style={styles.photoActionsRow}>
-              <TouchableOpacity style={styles.photoActionBtn} onPress={handleTakePhoto}>
-                <Ionicons name="camera" size={15} color={colors.primaryContainer} />
-                <Text style={styles.photoActionText}>Camera</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={[styles.photoActionBtn, { marginLeft: 6 }]} onPress={handlePickPhoto}>
-                <Ionicons name="images" size={15} color={colors.primaryContainer} />
-                <Text style={styles.photoActionText}>Gallery</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-
-          {photos.length > 0 ? (
-            <View style={styles.photoGrid}>
-              {photos.map((uri, index) => (
-                <TouchableOpacity 
-                  key={index} 
-                  style={styles.photoThumbWrapper}
-                  onPress={() => handleOpenPhotoEditor(index)}
-                  activeOpacity={0.85}
-                >
-                  <Image source={{ uri }} style={styles.photoThumbnail} resizeMode="cover" />
-                  <View style={{ position: 'absolute', top: 3, left: 3, backgroundColor: 'rgba(13, 148, 136, 0.85)', paddingHorizontal: 5, paddingVertical: 2, borderRadius: 4 }}>
-                    <Ionicons name="pencil" size={10} color="#fff" />
-                  </View>
-                  <TouchableOpacity 
-                    style={styles.photoDeleteBtn} 
-                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                    onPress={() => handleRemovePhoto(index)}
-                    activeOpacity={0.8}
-                  >
-                    <Ionicons name="close" size={14} color="#fff" />
-                  </TouchableOpacity>
-                  <Text style={styles.photoBadge}>#{index + 1}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          ) : (
-            <Text style={styles.emptyPhotosText}>No site photos attached yet. Tap above to attach building or inspection photos.</Text>
-          )}
-        </View>
-
-        {/* Card 4: Samples */}
+        {/* Card 3: Samples */}
         <View style={[styles.card, errors.samples ? styles.cardError : null]}>
           <View style={styles.cardHeaderRow}>
             <Text style={styles.cardTitle}>
@@ -554,18 +434,6 @@ export default function ChainOfCustodyScreen({ navigation }: any) {
           onCancel={() => setShowMapPicker(false)}
         />
       )}
-
-      {showImageEditor && editingPhotoIndex !== null && photos[editingPhotoIndex] && (
-        <ImageEditorModal
-          visible={showImageEditor}
-          imageUri={photos[editingPhotoIndex]}
-          onSave={handleSaveEditedPhoto}
-          onCancel={() => {
-            setShowImageEditor(false);
-            setEditingPhotoIndex(null);
-          }}
-        />
-      )}
     </SafeAreaView>
   );
 }
@@ -643,15 +511,6 @@ const styles = StyleSheet.create({
   contactDetailsBox: { backgroundColor: '#F8FAFC', padding: 12, borderRadius: 6, marginBottom: 8, borderWidth: 1, borderColor: '#E2E8F0' },
   contactCompany: { fontSize: 15, fontWeight: 'bold', color: colors.onSurface, marginBottom: 2 },
   contactSub: { fontSize: 13, color: colors.secondary },
-  photoActionsRow: { flexDirection: 'row', alignItems: 'center', flexShrink: 0 },
-  photoActionBtn: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F1F5F9', paddingHorizontal: 8, paddingVertical: 5, borderRadius: 6, borderWidth: 1, borderColor: '#CBD5E1' },
-  photoActionText: { marginLeft: 3, fontSize: 11, fontWeight: '700', color: colors.primaryContainer },
-  photoGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 10 },
-  photoThumbWrapper: { width: 80, height: 80, borderRadius: 8, overflow: 'hidden', borderWidth: 1, borderColor: '#CBD5E1', position: 'relative' },
-  photoThumbnail: { width: '100%', height: '100%' },
-  photoDeleteBtn: { position: 'absolute', top: 3, right: 3, backgroundColor: 'rgba(220, 38, 38, 0.9)', width: 24, height: 24, borderRadius: 12, alignItems: 'center', justifyContent: 'center', zIndex: 10 },
-  photoBadge: { position: 'absolute', bottom: 3, left: 3, backgroundColor: 'rgba(0,0,0,0.65)', color: '#fff', fontSize: 10, fontWeight: 'bold', paddingHorizontal: 4, borderRadius: 4 },
-  emptyPhotosText: { fontSize: 13, color: colors.outline, fontStyle: 'italic', marginTop: 6 },
   editSamplesRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#F1F5F9' },
   editSamplesText: { fontSize: 15, fontWeight: '600', color: colors.onSurface },
   batchCard: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#F8FAFC', padding: 14, borderRadius: 8, marginTop: 12, borderWidth: 1, borderColor: '#E2E8F0' },

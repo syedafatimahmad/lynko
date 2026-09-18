@@ -16,6 +16,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as MailComposer from 'expo-mail-composer';
 import * as Sharing from 'expo-sharing';
 import * as Print from 'expo-print';
+import * as FileSystem from 'expo-file-system/legacy';
 import { useAuthStore } from '../store/authStore';
 import { useLynkoStore, SubmissionRecord } from '../store/lynkoStore';
 import { colors } from '../theme/colors';
@@ -30,14 +31,33 @@ export default function SubmitCoCScreen({ route, navigation }: any) {
   const addRecipientEmail = useLynkoStore((state) => state.addRecipientEmail);
   const addSubmission = useLynkoStore((state) => state.addSubmission);
 
+  const totalSamplePhotos = samples.reduce((acc, s) => acc + (s.photoUris?.length || 0), 0);
+
+  const buildDefaultMessage = () => {
+    let msg = `Hello,\n\nPlease find attached the Chain of Custody document and project inspection details for PO #${cocData.poNumber || '47674'}.\n\nTotal Samples: ${samples.length}\nDate: ${cocData.samplingDate || new Date().toLocaleDateString()}\nSampled By: ${cocData.sampledBy || user?.displayName || 'Ali Saleh'}`;
+
+    const samplesWithPhotos = samples.filter(s => s.photoUris && s.photoUris.length > 0);
+    if (samplesWithPhotos.length > 0) {
+      msg += `\n\n--- ATTACHED SAMPLE PHOTOS MANIFEST ---`;
+      samplesWithPhotos.forEach((s, idx) => {
+        const sampleId = s.name || `${idx + 1}`;
+        const loc = s.description ? ` (${s.description})` : '';
+        const count = s.photoUris!.length;
+        const fileNames = s.photoUris!.map((_, pIdx) => `Sample_${sampleId.replace(/[^a-zA-Z0-9_-]/g, '_')}_Photo_${pIdx + 1}.jpg`).join(', ');
+        msg += `\n• Sample ${sampleId}${loc}: ${count} photo(s) [${fileNames}]`;
+      });
+    }
+
+    msg += `\n\nThank you,\nLynko Inspection Team`;
+    return msg;
+  };
+
   const initialRecipient = route?.params?.prefillRecipient || (recipientHistory.length > 0 ? recipientHistory[0] : '');
   const [recipientEmail, setRecipientEmail] = useState(initialRecipient);
   const [subject, setSubject] = useState(
     route?.params?.prefillSubject || `Chain of Custody - ${cocData.poNumber ? `PO #${cocData.poNumber}` : 'Lynko Inspection'}`
   );
-  const [message, setMessage] = useState(
-    `Hello,\n\nPlease find attached the Chain of Custody document and project inspection details for PO #${cocData.poNumber || '47674'}.\n\nTotal Samples: ${samples.length}\nDate: ${cocData.samplingDate || new Date().toLocaleDateString()}\nSampled By: ${cocData.sampledBy || user?.displayName || 'Ali Saleh'}\n\nThank you,\nLynko Inspection Team`
-  );
+  const [message, setMessage] = useState(buildDefaultMessage());
   const [sending, setSending] = useState(false);
 
   useEffect(() => {
@@ -76,7 +96,7 @@ export default function SubmitCoCScreen({ route, navigation }: any) {
         subject: subject,
         submittedAt: `${new Date().toLocaleDateString()} at ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`,
         samplesCount: samples.length,
-        photosCount: (cocData.photos || []).length,
+        photosCount: totalSamplePhotos,
         status: 'Dispatched',
         pdfUri: pdfUri,
         turnaround: cocData.turnaround1 || 'Next-day rush',
@@ -85,11 +105,34 @@ export default function SubmitCoCScreen({ route, navigation }: any) {
 
       await addSubmission(submissionRecord);
 
-      // 4. Attach photos only if user has attachPhotosToEmail enabled and valid URIs
+      // 4. Attach per-sample photos with Sample ID in the filename
       const attachPhotos = cocData.attachPhotosToEmail !== false;
-      const rawPhotos = attachPhotos ? (cocData.photos || []).filter(p => !!p) : [];
-      const validPhotos = rawPhotos.filter(p => p.startsWith('file://') || p.startsWith('content://'));
-      const allAttachments = [pdfUri, ...validPhotos];
+      const photoAttachments: string[] = [];
+
+      if (attachPhotos) {
+        for (let i = 0; i < samples.length; i++) {
+          const sample = samples[i];
+          if (sample.photoUris && sample.photoUris.length > 0) {
+            const cleanSampleId = (sample.name || `${i + 1}`).replace(/[^a-zA-Z0-9_-]/g, '_');
+            for (let pIdx = 0; pIdx < sample.photoUris.length; pIdx++) {
+              const srcUri = sample.photoUris[pIdx];
+              if (srcUri && (srcUri.startsWith('file://') || srcUri.startsWith('content://'))) {
+                try {
+                  const targetFileName = `Sample_${cleanSampleId}_Photo_${pIdx + 1}.jpg`;
+                  const targetUri = `${FileSystem.cacheDirectory}${targetFileName}`;
+                  await FileSystem.copyAsync({ from: srcUri, to: targetUri });
+                  photoAttachments.push(targetUri);
+                } catch (copyErr) {
+                  console.warn('Could not rename photo, using original URI:', copyErr);
+                  photoAttachments.push(srcUri);
+                }
+              }
+            }
+          }
+        }
+      }
+
+      const allAttachments = [pdfUri, ...photoAttachments];
 
       // 5. Open mail client
       const isAvailable = await MailComposer.isAvailableAsync();
@@ -218,10 +261,10 @@ export default function SubmitCoCScreen({ route, navigation }: any) {
         <View style={styles.card}>
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
             <View style={{ flex: 1, paddingRight: 12 }}>
-              <Text style={{ fontSize: 14, fontWeight: '700', color: colors.onSurface }}>Attach Site Photos to Email</Text>
+              <Text style={{ fontSize: 14, fontWeight: '700', color: colors.onSurface }}>Attach Sample Photos to Email</Text>
               <Text style={{ fontSize: 12, color: colors.secondary, marginTop: 2 }}>
                 {cocData.attachPhotosToEmail !== false
-                  ? `Includes ${(cocData.photos || []).length} photo(s) as standalone email attachments.`
+                  ? `Includes ${totalSamplePhotos} sample photo(s) labeled by Sample ID as standalone email attachments.`
                   : 'Photos excluded from email (remains saved in local project data).'}
               </Text>
             </View>
@@ -240,7 +283,7 @@ export default function SubmitCoCScreen({ route, navigation }: any) {
             <View style={{ marginLeft: 12, flex: 1 }}>
               <Text style={styles.attachmentName}>ChainOfCustody_{cocData.poNumber || '47674'}.pdf</Text>
               <Text style={styles.attachmentSize}>
-                {samples.length} Samples • {(cocData.photos || []).length} Site Photos Attached
+                {samples.length} Samples • {totalSamplePhotos} Sample Photo(s) Attached
               </Text>
             </View>
           </View>
