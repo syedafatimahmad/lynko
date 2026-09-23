@@ -74,8 +74,10 @@ export default function ProjectsScreen({ navigation }: any) {
       zipCode: item.zipCode || '',
       contactAddress: item.address || '',
       projectType: item.projectType || 'Mold',
+      turnaround1: item.turnaround || '48 hr',
+      sampledBy: item.inspectorName || 'Ali Saleh',
     });
-    navigation.navigate('ChainOfCustody');
+    navigation.navigate('ProjectSamples');
   };
 
   return (

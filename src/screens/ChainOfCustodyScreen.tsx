@@ -299,16 +299,12 @@ export default function ChainOfCustodyScreen({ navigation }: any) {
             )}
           </View>
 
-          {/* Top trigger: Edit Samples > (Opens EditSamples for Asbestos, SampleTypes for others) */}
+          {/* Top trigger: Edit Samples > (Opens ProjectSamples review) */}
           <TouchableOpacity 
             style={styles.editSamplesRow} 
             onPress={() => {
               clearError('samples');
-              if (cocData.projectType === 'Asbestos') {
-                navigation.navigate('EditSamples');
-              } else {
-                navigation.navigate('SampleTypes');
-              }
+              navigation.navigate('ProjectSamples');
             }}
           >
             <Text style={styles.editSamplesText}>Edit Samples</Text>
@@ -320,15 +316,15 @@ export default function ChainOfCustodyScreen({ navigation }: any) {
             style={[styles.batchCard, errors.samples ? styles.batchCardError : null]} 
             onPress={() => {
               clearError('samples');
-              navigation.navigate('EditSamples');
+              navigation.navigate('ProjectSamples');
             }}
           >
             <View style={{ flex: 1 }}>
               <Text style={styles.batchCountTitle}>
-                {samples.length} {cocData.projectType === 'Asbestos' ? 'Asbestos Bulk sample' : 'Bulk sample'}{samples.length === 1 ? '' : 's'}
+                {samples.length} {cocData.projectType === 'Asbestos' ? 'Asbestos Bulk sample' : 'Air sample'}{samples.length === 1 ? '' : 's'}
               </Text>
-              <Text style={styles.batchAnalysisText}>{cocData.analysis1 || (cocData.projectType === 'Asbestos' ? 'Asbestos Bulk Analysis' : 'Asbestos PLM')}</Text>
-              <Text style={styles.batchTurnaroundText}>{cocData.turnaround1 || 'Next-day rush'}</Text>
+              <Text style={styles.batchAnalysisText}>{cocData.projectType === 'Asbestos' ? 'Asbestos Bulk Analysis' : 'Mold Spore Trap Analysis'}</Text>
+              <Text style={styles.batchTurnaroundText}>{cocData.turnaround1 || '48 hr'}</Text>
             </View>
             <Ionicons name="chevron-forward" size={20} color="#94A3B8" />
           </TouchableOpacity>

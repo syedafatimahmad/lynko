@@ -18,6 +18,8 @@ export interface Project {
   pdfUri?: string;
   submittedAt?: string;
   recipientEmail?: string;
+  turnaround?: string;
+  inspectorName?: string;
   samples?: SampleItem[];
   cocData?: CoCData;
 }
@@ -25,15 +27,19 @@ export interface Project {
 export interface SampleItem {
   id: string;
   name: string;
-  analysis1Enabled: boolean;
-  analysis2Enabled: boolean;
+  sampleCode?: string; // Cassette ID or test code (for Mold)
   description: string;
+  flowRate?: string; // e.g. "15" L/min (for Mold)
+  duration?: string; // e.g. "5" min (for Mold)
+  volume?: string; // auto-computed e.g. "75" L (for Mold)
+  notes?: string;
+  photoUri?: string;
+  photoUris?: string[];
+  analysis1Enabled?: boolean;
+  analysis2Enabled?: boolean;
   property?: string;
   measurement?: string;
   unit?: string;
-  notes: string;
-  photoUri?: string;
-  photoUris?: string[];
 }
 
 export interface EquipmentItem {
@@ -191,6 +197,8 @@ export const useLynkoStore = create<LynkoState>()(
             zipCode: p.zipCode,
             contactAddress: p.address || initialCoCData.contactAddress,
             projectType: p.projectType || 'Mold',
+            turnaround1: p.turnaround || '48 hr',
+            sampledBy: p.inspectorName || 'Ali Saleh',
             sampleTypeCounts: {},
             photos: [],
           },

@@ -53,17 +53,17 @@ export const generatePDF = async (project: Project | null, cocData: CoCData, sam
           const safeName = escapeHtml(s.name.replace('Sample ID ', ''));
           const safeDesc = escapeHtml(s.description || '');
           const safeNotes = escapeHtml(s.notes || '');
-          const safeProp = escapeHtml(s.property || '');
-          const safeMeas = escapeHtml(s.measurement || '');
-          const safeUnit = s.unit && s.unit !== 'N/A' ? ` ${escapeHtml(s.unit)}` : '';
+          const safeProp = escapeHtml(s.sampleCode || s.property || (cocData.analysis1?.toLowerCase().includes('mold') || s.volume ? 'Spore Trap' : 'Bulk'));
+          const rawVolume = s.volume || (s.measurement ? `${s.measurement}${s.unit && s.unit !== 'N/A' ? ` ${s.unit}` : ''}` : '-');
+          const safeMeas = escapeHtml(rawVolume);
           
           rowsHtml += `
             <tr>
               <td class="text-center">${safeName}</td>
               <td>${safeDesc}${safeNotes ? `<br><i>Note: ${safeNotes}</i>` : ''}</td>
               <td class="text-center">${safeProp}</td>
-              <td class="text-center">${safeMeas}${safeUnit}</td>
-              <td class="text-center bold">${s.analysis1Enabled ? 'X' : ''}</td>
+              <td class="text-center">${safeMeas}</td>
+              <td class="text-center bold">${s.analysis1Enabled !== false ? 'X' : ''}</td>
               <td class="text-center bold">${s.analysis2Enabled ? 'X' : ''}</td>
             </tr>
           `;

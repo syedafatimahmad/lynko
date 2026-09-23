@@ -42,9 +42,10 @@ export default function SubmitCoCScreen({ route, navigation }: any) {
       samplesWithPhotos.forEach((s, idx) => {
         const sampleId = s.name || `${idx + 1}`;
         const loc = s.description ? ` (${s.description})` : '';
+        const vol = s.volume ? ` [Vol: ${s.volume}]` : '';
         const count = s.photoUris!.length;
         const fileNames = s.photoUris!.map((_, pIdx) => `Sample_${sampleId.replace(/[^a-zA-Z0-9_-]/g, '_')}_Photo_${pIdx + 1}.jpg`).join(', ');
-        msg += `\n• Sample ${sampleId}${loc}: ${count} photo(s) [${fileNames}]`;
+        msg += `\n• Sample ${sampleId}${loc}${vol}: ${count} photo(s) [${fileNames}]`;
       });
     }
 
