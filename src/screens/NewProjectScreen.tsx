@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, ScrollView } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, ScrollView, KeyboardAvoidingView, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLynkoStore } from '../store/lynkoStore';
 import { colors } from '../theme/colors';
@@ -47,7 +47,16 @@ export default function NewProjectScreen({ navigation }: any) {
         <View style={{ width: 24 }} />
       </View>
 
-      <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
+      <KeyboardAvoidingView 
+        style={{ flex: 1 }} 
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 64 : 0}
+      >
+        <ScrollView 
+          contentContainerStyle={styles.container} 
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+        >
         <View style={styles.inputGroup}>
           <Text style={styles.label}>Project Scope / Type *</Text>
           <View style={styles.typeSelectorRow}>
@@ -161,6 +170,7 @@ export default function NewProjectScreen({ navigation }: any) {
           <Text style={[styles.buttonText, { color: colors.secondary }]}>Cancel</Text>
         </TouchableOpacity>
       </ScrollView>
+      </KeyboardAvoidingView>
 
       {showMapPicker && (
         <MapAddressPickerModal
@@ -192,7 +202,7 @@ const styles = StyleSheet.create({
   },
   iconBtn: { padding: 4 },
   headerTitle: { fontSize: 20, fontWeight: 'bold', color: colors.onSurface },
-  container: { padding: 20 },
+  container: { padding: 20, paddingBottom: 160 },
   inputGroup: { marginBottom: 16 },
   label: { fontSize: 13, fontWeight: '600', color: colors.onSurfaceVariant, marginBottom: 6 },
   input: { 

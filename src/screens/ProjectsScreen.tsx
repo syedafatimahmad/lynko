@@ -22,6 +22,8 @@ export default function ProjectsScreen({ navigation }: any) {
   const samples = useLynkoStore((state) => state.samples);
   const updateCoCData = useLynkoStore((state) => state.updateCoCData);
   const deleteProject = useLynkoStore((state) => state.deleteProject);
+  const setActiveProjectId = useLynkoStore((state) => state.setActiveProjectId);
+  const setSamples = useLynkoStore((state) => state.setSamples);
   
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<'All' | 'Draft' | 'Submitted'>('All');
@@ -64,10 +66,14 @@ export default function ProjectsScreen({ navigation }: any) {
   };
 
   const handleEditProject = (item: Project) => {
+    setActiveProjectId(item.id);
+    setSamples(item.samples || []);
     updateCoCData({
       poNumber: item.poNumber,
       description: item.description || item.title || '',
       zipCode: item.zipCode || '',
+      contactAddress: item.address || '',
+      projectType: item.projectType || 'Mold',
     });
     navigation.navigate('ChainOfCustody');
   };

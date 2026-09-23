@@ -5,17 +5,22 @@ import * as ImagePicker from 'expo-image-picker';
 import { useLynkoStore, SampleItem } from '../store/lynkoStore';
 import { colors } from '../theme/colors';
 import { Ionicons } from '@expo/vector-icons';
+import ImageEditorModal from '../components/ImageEditorModal';
 
 export default function EditSamplesScreen({ navigation }: any) {
   const insets = useSafeAreaInsets();
   const samples = useLynkoStore((state) => state.samples);
+  const addSample = useLynkoStore((state) => state.addSample);
   const updateSample = useLynkoStore((state) => state.updateSample);
+  const deleteSample = useLynkoStore((state) => state.deleteSample);
   const cocData = useLynkoStore((state) => state.cocData);
   const updateCoCData = useLynkoStore((state) => state.updateCoCData);
   const autoFillField = useLynkoStore((state) => state.autoFillField);
 
+  const isAsbestos = cocData.projectType === 'Asbestos';
+
   const [expandedNotes, setExpandedNotes] = useState<{ [key: string]: boolean }>({});
-  const [analysis1, setAnalysis1] = useState(cocData.analysis1 || 'Asbestos PLM');
+  const [analysis1, setAnalysis1] = useState(cocData.analysis1 || (isAsbestos ? 'Asbestos Bulk Analysis' : 'Asbestos PLM'));
   const [turnaround1, setTurnaround1] = useState(cocData.turnaround1 || 'Next-day rush');
   const [analysis2, setAnalysis2] = useState(cocData.analysis2 || 'Not set');
   const [turnaround2, setTurnaround2] = useState(cocData.turnaround2 || '');
@@ -25,8 +30,46 @@ export default function EditSamplesScreen({ navigation }: any) {
   const [autoFillType, setAutoFillType] = useState<'sampleId' | 'description'>('description');
   const [autoFillInput, setAutoFillInput] = useState('');
 
+  // Image Editor Modal state (CompanyCam style markup)
+  const [editorVisible, setEditorVisible] = useState(false);
+  const [editorImageUri, setEditorImageUri] = useState('');
+  const [editorTarget, setEditorTarget] = useState<{
+    sampleId: string;
+    photoIndex?: number;
+    rawUri?: string;
+  } | null>(null);
+
   const toggleNotes = (id: string) => {
     setExpandedNotes(prev => ({ ...prev, [id]: !prev[id] }));
+  };
+
+  const handleAddNewSample = () => {
+    const nextNum = samples.length + 1;
+    const newSample: SampleItem = {
+      id: `sample_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+      name: `${nextNum}`,
+      analysis1Enabled: true,
+      analysis2Enabled: false,
+      description: '',
+      notes: '',
+      photoUris: [],
+    };
+    addSample(newSample);
+  };
+
+  const handleDeleteSample = (sampleId: string, sampleName: string) => {
+    Alert.alert(
+      'Delete Sample',
+      `Are you sure you want to remove Sample #${sampleName}?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: () => deleteSample(sampleId),
+        },
+      ]
+    );
   };
 
   const handleTakeSamplePhoto = async (sampleId: string) => {
@@ -41,13 +84,81 @@ export default function EditSamplesScreen({ navigation }: any) {
         quality: 0.8,
       });
       if (!result.canceled && result.assets && result.assets[0]) {
-        const currentSample = samples.find(s => s.id === sampleId);
-        const currentPhotos = currentSample?.photoUris || [];
-        updateSample(sampleId, { photoUris: [...currentPhotos, result.assets[0].uri] });
+        const uri = result.assets[0].uri;
+        // Immediately launch CompanyCam-style photo markup editor
+        setEditorImageUri(uri);
+        setEditorTarget({ sampleId, rawUri: uri });
+        setEditorVisible(true);
       }
     } catch (error: any) {
       console.error('Error taking photo for sample:', error);
       Alert.alert('Camera Error', error?.message || 'Failed to open camera.');
+    }
+  };
+
+  const handleOpenPhotoEditor = (sampleId: string, photoIndex: number, uri: string) => {
+    setEditorImageUri(uri);
+    setEditorTarget({ sampleId, photoIndex, rawUri: uri });
+    setEditorVisible(true);
+  };
+
+  const handleEditorSave = (editedUri: string) => {
+    if (!editorTarget) return;
+    const { sampleId, photoIndex } = editorTarget;
+    const currentSample = samples.find(s => s.id === sampleId);
+    const currentPhotos = currentSample?.photoUris || [];
+
+    if (photoIndex !== undefined && photoIndex >= 0) {
+      // Update existing photo with annotations
+      const updated = [...currentPhotos];
+      updated[photoIndex] = editedUri;
+      updateSample(sampleId, { photoUris: updated });
+    } else {
+      // Save newly taken annotated photo
+      updateSample(sampleId, { photoUris: [...currentPhotos, editedUri] });
+    }
+
+    setEditorVisible(false);
+    setEditorTarget(null);
+  };
+
+  const handleEditorCancel = () => {
+    if (!editorTarget) {
+      setEditorVisible(false);
+      return;
+    }
+    // If it was a newly captured photo, ask if user wants to keep original unedited or discard
+    if (editorTarget.photoIndex === undefined && editorTarget.rawUri) {
+      Alert.alert(
+        'Keep Original Photo?',
+        'Do you want to keep the captured photo without markups, or discard it?',
+        [
+          {
+            text: 'Discard',
+            style: 'destructive',
+            onPress: () => {
+              setEditorVisible(false);
+              setEditorTarget(null);
+            },
+          },
+          {
+            text: 'Keep Unedited',
+            onPress: () => {
+              const { sampleId, rawUri } = editorTarget;
+              if (rawUri) {
+                const currentSample = samples.find(s => s.id === sampleId);
+                const currentPhotos = currentSample?.photoUris || [];
+                updateSample(sampleId, { photoUris: [...currentPhotos, rawUri] });
+              }
+              setEditorVisible(false);
+              setEditorTarget(null);
+            },
+          },
+        ]
+      );
+    } else {
+      setEditorVisible(false);
+      setEditorTarget(null);
     }
   };
 
@@ -113,17 +224,19 @@ export default function EditSamplesScreen({ navigation }: any) {
       <View style={styles.card}>
         <View style={styles.cardHeaderRow}>
           <Ionicons name="flask-outline" size={20} color={colors.primaryContainer} style={{ marginRight: 8 }} />
-          <Text style={styles.cardTitle}>Batch Analysis & Turnaround</Text>
+          <Text style={styles.cardTitle}>
+            {isAsbestos ? 'Asbestos Bulk Analysis & Turnaround' : 'Batch Analysis & Turnaround'}
+          </Text>
         </View>
 
         <View style={styles.configGrid}>
           <View style={styles.inputGroup}>
-            <Text style={styles.inputLabel}>Add Analysis 1</Text>
+            <Text style={styles.inputLabel}>{isAsbestos ? 'Bulk Analysis Type' : 'Add Analysis 1'}</Text>
             <TextInput
               style={styles.input}
               value={analysis1}
               onChangeText={setAnalysis1}
-              placeholder="e.g. Asbestos PLM"
+              placeholder={isAsbestos ? "e.g. Asbestos Bulk (PLM)" : "e.g. Asbestos PLM"}
             />
           </View>
 
@@ -137,27 +250,29 @@ export default function EditSamplesScreen({ navigation }: any) {
             />
           </View>
 
-          <View style={styles.row}>
-            <View style={[styles.inputGroup, { flex: 1, marginRight: 8 }]}>
-              <Text style={styles.inputLabel}>Add Analysis 2</Text>
-              <TextInput
-                style={styles.input}
-                value={analysis2}
-                onChangeText={setAnalysis2}
-                placeholder="Not set"
-              />
-            </View>
+          {!isAsbestos && (
+            <View style={styles.row}>
+              <View style={[styles.inputGroup, { flex: 1, marginRight: 8 }]}>
+                <Text style={styles.inputLabel}>Add Analysis 2</Text>
+                <TextInput
+                  style={styles.input}
+                  value={analysis2}
+                  onChangeText={setAnalysis2}
+                  placeholder="Not set"
+                />
+              </View>
 
-            <View style={[styles.inputGroup, { flex: 1, marginLeft: 8 }]}>
-              <Text style={styles.inputLabel}>Turnaround 2</Text>
-              <TextInput
-                style={styles.input}
-                value={turnaround2}
-                onChangeText={setTurnaround2}
-                placeholder="Optional"
-              />
+              <View style={[styles.inputGroup, { flex: 1, marginLeft: 8 }]}>
+                <Text style={styles.inputLabel}>Turnaround 2</Text>
+                <TextInput
+                  style={styles.input}
+                  value={turnaround2}
+                  onChangeText={setTurnaround2}
+                  placeholder="Optional"
+                />
+              </View>
             </View>
-          </View>
+          )}
         </View>
       </View>
 
@@ -188,7 +303,13 @@ export default function EditSamplesScreen({ navigation }: any) {
       </View>
 
       <View style={styles.samplesListHeader}>
-        <Text style={styles.samplesListTitle}>Individual Sample Records ({samples.length})</Text>
+        <Text style={styles.samplesListTitle}>
+          {isAsbestos ? `Asbestos Bulk Samples (${samples.length})` : `Individual Sample Records (${samples.length})`}
+        </Text>
+        <TouchableOpacity style={styles.addSampleHeaderBtn} onPress={handleAddNewSample} activeOpacity={0.7}>
+          <Ionicons name="add" size={16} color="#FFFFFF" style={{ marginRight: 4 }} />
+          <Text style={styles.addSampleHeaderBtnText}>Add Sample</Text>
+        </TouchableOpacity>
       </View>
     </View>
   );
@@ -198,31 +319,42 @@ export default function EditSamplesScreen({ navigation }: any) {
 
     return (
       <View style={styles.sampleCard}>
-        {/* Sample Header Row with Badge & Toggles */}
+        {/* Sample Header Row with Badge, Delete button, and optional Analysis Toggles */}
         <View style={styles.sampleCardHeader}>
-          <View style={styles.sampleBadge}>
-            <Text style={styles.sampleBadgeText}>Sample #{index + 1}</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            <View style={styles.sampleBadge}>
+              <Text style={styles.sampleBadgeText}>Sample #{index + 1}</Text>
+            </View>
+            <TouchableOpacity 
+              style={styles.deleteSampleBtn}
+              onPress={() => handleDeleteSample(item.id, item.name || `${index + 1}`)}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <Ionicons name="trash-outline" size={17} color="#EF4444" />
+            </TouchableOpacity>
           </View>
 
-          <View style={styles.togglesContainer}>
-            <View style={styles.toggleItem}>
-              <Text style={styles.toggleItemLabel}>Analysis 1</Text>
-              <Switch
-                value={item.analysis1Enabled}
-                onValueChange={(val) => updateSample(item.id, { analysis1Enabled: val })}
-                trackColor={{ true: colors.primaryContainer, false: '#CBD5E1' }}
-              />
-            </View>
+          {!isAsbestos && (
+            <View style={styles.togglesContainer}>
+              <View style={styles.toggleItem}>
+                <Text style={styles.toggleItemLabel}>Analysis 1</Text>
+                <Switch
+                  value={item.analysis1Enabled}
+                  onValueChange={(val) => updateSample(item.id, { analysis1Enabled: val })}
+                  trackColor={{ true: colors.primaryContainer, false: '#CBD5E1' }}
+                />
+              </View>
 
-            <View style={styles.toggleItem}>
-              <Text style={styles.toggleItemLabel}>Analysis 2</Text>
-              <Switch
-                value={item.analysis2Enabled}
-                onValueChange={(val) => updateSample(item.id, { analysis2Enabled: val })}
-                trackColor={{ true: colors.primaryContainer, false: '#CBD5E1' }}
-              />
+              <View style={styles.toggleItem}>
+                <Text style={styles.toggleItemLabel}>Analysis 2</Text>
+                <Switch
+                  value={item.analysis2Enabled}
+                  onValueChange={(val) => updateSample(item.id, { analysis2Enabled: val })}
+                  trackColor={{ true: colors.primaryContainer, false: '#CBD5E1' }}
+                />
+              </View>
             </View>
-          </View>
+          )}
         </View>
 
         {/* Sample ID & Description Inputs */}
@@ -281,7 +413,15 @@ export default function EditSamplesScreen({ navigation }: any) {
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.photoThumbnailScroll}>
               {item.photoUris.map((uri, pIdx) => (
                 <View key={`${uri}-${pIdx}`} style={styles.thumbnailWrapper}>
-                  <Image source={{ uri }} style={styles.sampleThumbnail} />
+                  <TouchableOpacity
+                    activeOpacity={0.8}
+                    onPress={() => handleOpenPhotoEditor(item.id, pIdx, uri)}
+                  >
+                    <Image source={{ uri }} style={styles.sampleThumbnail} />
+                    <View style={styles.thumbnailEditBadge}>
+                      <Ionicons name="brush" size={10} color="#FFFFFF" />
+                    </View>
+                  </TouchableOpacity>
                   <TouchableOpacity
                     style={styles.removeThumbnailBtn}
                     onPress={() => handleRemoveSamplePhoto(item.id, pIdx)}
@@ -293,7 +433,7 @@ export default function EditSamplesScreen({ navigation }: any) {
               ))}
             </ScrollView>
           ) : (
-            <Text style={styles.noPhotosText}>No photos attached to this sample yet</Text>
+            <Text style={styles.noPhotosText}>No photos attached to this sample yet. Take a photo to open markup.</Text>
           )}
         </View>
 
@@ -326,6 +466,26 @@ export default function EditSamplesScreen({ navigation }: any) {
     );
   };
 
+  const renderEmptyList = () => (
+    <View style={styles.emptyContainer}>
+      <View style={styles.emptyIconCircle}>
+        <Ionicons name="cube-outline" size={36} color={colors.primaryContainer} />
+      </View>
+      <Text style={styles.emptyTitle}>No Samples Logged Yet</Text>
+      <Text style={styles.emptySubtitle}>
+        {isAsbestos
+          ? 'Start logging bulk samples for this asbestos inspection project.'
+          : 'Add sample items to configure media records and photos.'}
+      </Text>
+      <TouchableOpacity style={styles.addFirstSampleBtn} onPress={handleAddNewSample} activeOpacity={0.8}>
+        <Ionicons name="add" size={20} color="#FFFFFF" style={{ marginRight: 6 }} />
+        <Text style={styles.addFirstSampleBtnText}>
+          {isAsbestos ? '+ Add First Bulk Sample' : '+ Add First Sample'}
+        </Text>
+      </TouchableOpacity>
+    </View>
+  );
+
   return (
     <SafeAreaView style={styles.safeArea}>
       {/* App Themed Header */}
@@ -334,7 +494,7 @@ export default function EditSamplesScreen({ navigation }: any) {
           <Ionicons name="arrow-back" size={24} color={colors.primaryContainer} />
         </TouchableOpacity>
         <View style={styles.headerTitleGroup}>
-          <Text style={styles.headerTitle}>Sample Logging</Text>
+          <Text style={styles.headerTitle}>{isAsbestos ? 'Asbestos Bulk Samples' : 'Sample Logging'}</Text>
           <Text style={styles.headerSubtitle}>{samples.length} Samples in Batch</Text>
         </View>
         <TouchableOpacity onPress={handleSaveAll} style={styles.saveHeaderBtn}>
@@ -346,21 +506,35 @@ export default function EditSamplesScreen({ navigation }: any) {
         data={samples}
         keyExtractor={(item) => item.id}
         ListHeaderComponent={renderHeader}
+        ListEmptyComponent={renderEmptyList}
         renderItem={renderSampleItem}
         contentContainerStyle={[
           styles.scrollList,
-          { paddingBottom: insets.bottom > 0 ? insets.bottom + 80 : 80 }
+          { paddingBottom: insets.bottom > 0 ? insets.bottom + 90 : 90 }
         ]}
         showsVerticalScrollIndicator={false}
       />
 
       {/* Floating Bottom Action Bar */}
       <View style={[styles.bottomBar, { paddingBottom: insets.bottom > 0 ? insets.bottom + 8 : 12 }]}>
-        <TouchableOpacity style={styles.applyButton} onPress={handleSaveAll}>
+        <TouchableOpacity style={styles.bottomAddBtn} onPress={handleAddNewSample} activeOpacity={0.8}>
+          <Ionicons name="add-circle-outline" size={20} color={colors.primaryContainer} style={{ marginRight: 6 }} />
+          <Text style={styles.bottomAddBtnText}>+ Add Sample</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity style={styles.applyButton} onPress={handleSaveAll} activeOpacity={0.8}>
           <Ionicons name="checkmark-done" size={20} color="#fff" style={{ marginRight: 8 }} />
           <Text style={styles.applyButtonText}>Save & Done</Text>
         </TouchableOpacity>
       </View>
+
+      {/* CompanyCam Style Image Markup & Notes Editor Modal */}
+      <ImageEditorModal
+        visible={editorVisible}
+        imageUri={editorImageUri}
+        onSave={handleEditorSave}
+        onCancel={handleEditorCancel}
+      />
 
       {/* Quick Auto-fill Modal */}
       <Modal visible={autoFillModalVisible} transparent animationType="fade">
@@ -494,13 +668,29 @@ const styles = StyleSheet.create({
     marginTop: 8,
     marginBottom: 12,
     paddingHorizontal: 4,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
   },
   samplesListTitle: {
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: '700',
     color: colors.secondary,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
+  },
+  addSampleHeaderBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.primaryContainer,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 6,
+  },
+  addSampleHeaderBtnText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '700',
   },
   sampleCard: {
     backgroundColor: colors.surfaceContainerLowest,
@@ -537,6 +727,12 @@ const styles = StyleSheet.create({
     color: colors.primary,
     fontWeight: '700',
     fontSize: 13,
+  },
+  deleteSampleBtn: {
+    marginLeft: 10,
+    padding: 4,
+    borderRadius: 6,
+    backgroundColor: '#FEE2E2',
   },
   togglesContainer: {
     flexDirection: 'row',
@@ -600,10 +796,21 @@ const styles = StyleSheet.create({
     marginRight: 8,
   },
   sampleThumbnail: {
-    width: 60,
-    height: 60,
+    width: 62,
+    height: 62,
     borderRadius: 6,
     backgroundColor: '#E2E8F0',
+  },
+  thumbnailEditBadge: {
+    position: 'absolute',
+    bottom: 3,
+    right: 3,
+    backgroundColor: 'rgba(0,0,0,0.65)',
+    borderRadius: 4,
+    paddingHorizontal: 4,
+    paddingVertical: 2,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   removeThumbnailBtn: {
     position: 'absolute',
@@ -617,6 +824,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     borderWidth: 1,
     borderColor: '#FFFFFF',
+    zIndex: 10,
   },
   noPhotosText: {
     fontSize: 11,
@@ -639,6 +847,53 @@ const styles = StyleSheet.create({
     minHeight: 56,
     textAlignVertical: 'top',
   },
+  emptyContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 40,
+    paddingHorizontal: 24,
+    backgroundColor: colors.surfaceContainerLowest,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    marginTop: 8,
+    marginBottom: 20,
+  },
+  emptyIconCircle: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: '#E6F8F7',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 12,
+  },
+  emptyTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: colors.onSurface,
+    marginBottom: 4,
+  },
+  emptySubtitle: {
+    fontSize: 13,
+    color: colors.secondary,
+    textAlign: 'center',
+    marginBottom: 18,
+    lineHeight: 18,
+  },
+  addFirstSampleBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.primaryContainer,
+    paddingHorizontal: 18,
+    paddingVertical: 10,
+    borderRadius: 8,
+  },
+  addFirstSampleBtnText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '700',
+  },
   bottomBar: {
     position: 'absolute',
     bottom: 0,
@@ -647,6 +902,9 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surfaceContainerLowest,
     paddingHorizontal: 16,
     paddingVertical: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
     borderTopWidth: 1,
     borderTopColor: colors.outlineVariant,
     shadowColor: '#000',
@@ -655,7 +913,24 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 4,
   },
+  bottomAddBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    height: 48,
+    paddingHorizontal: 16,
+    borderWidth: 1.5,
+    borderColor: colors.primaryContainer,
+    borderRadius: 8,
+    backgroundColor: '#F0FDFA',
+  },
+  bottomAddBtnText: {
+    color: colors.primaryContainer,
+    fontSize: 14,
+    fontWeight: '700',
+  },
   applyButton: {
+    flex: 1,
     backgroundColor: colors.primaryContainer,
     height: 48,
     borderRadius: 8,

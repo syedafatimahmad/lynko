@@ -18,6 +18,8 @@ export interface Project {
   pdfUri?: string;
   submittedAt?: string;
   recipientEmail?: string;
+  samples?: SampleItem[];
+  cocData?: CoCData;
 }
 
 export interface SampleItem {
@@ -79,15 +81,20 @@ export interface CoCData {
   analysis2?: string;
   turnaround2?: string;
   attachPhotosToEmail?: boolean;
+  projectType?: 'Mold' | 'Asbestos' | 'Both';
 }
 
 interface LynkoState {
   projects: Project[];
+  activeProjectId: string | null;
   samples: SampleItem[];
   equipment: EquipmentItem[];
   submissions: SubmissionRecord[];
   cocData: CoCData;
   recipientHistory: string[];
+  setActiveProjectId: (id: string | null) => void;
+  setSamples: (samples: SampleItem[]) => void;
+  resetForNewProject: (projectData: Partial<Project>) => void;
   addProject: (p: Project) => Promise<void>;
   updateProject: (id: string, updates: Partial<Project>) => Promise<void>;
   deleteProject: (id: string) => Promise<void>;
@@ -133,6 +140,7 @@ export const useLynkoStore = create<LynkoState>()(
   persist(
     (set, get) => ({
       projects: [],
+      activeProjectId: null,
       samples: [],
       equipment: [
         { id: '1', name: 'Asbestos PCM Cassette', count: 0 },
@@ -149,11 +157,53 @@ export const useLynkoStore = create<LynkoState>()(
       cocData: initialCoCData,
       recipientHistory: defaultRecipients,
 
+      setActiveProjectId: (id) => set({ activeProjectId: id }),
+      setSamples: (newSamples) => set({ samples: newSamples }),
+
+      resetForNewProject: (projectData) => {
+        const freshCoc: CoCData = {
+          ...initialCoCData,
+          poNumber: projectData.poNumber || '',
+          description: projectData.description || projectData.title || '',
+          zipCode: projectData.zipCode || '',
+          contactAddress: projectData.address || initialCoCData.contactAddress,
+          samplingDate: new Date().toLocaleDateString(),
+          samplingTime: new Date().toLocaleTimeString(),
+          projectType: projectData.projectType || 'Mold',
+          sampleTypeCounts: {},
+          photos: [],
+        };
+        set({
+          activeProjectId: projectData.id || null,
+          samples: [], // Zero samples from previous project!
+          cocData: freshCoc,
+        });
+      },
+
       addProject: async (p) => {
-        set((state) => ({ projects: [p, ...state.projects] }));
+        const freshProject: Project = {
+          ...p,
+          samples: [],
+          cocData: {
+            ...initialCoCData,
+            poNumber: p.poNumber,
+            description: p.description || p.title,
+            zipCode: p.zipCode,
+            contactAddress: p.address || initialCoCData.contactAddress,
+            projectType: p.projectType || 'Mold',
+            sampleTypeCounts: {},
+            photos: [],
+          },
+        };
+        set((state) => ({
+          projects: [freshProject, ...state.projects],
+          activeProjectId: p.id,
+          samples: [], // Zero samples for new project!
+          cocData: freshProject.cocData!,
+        }));
         if (auth.currentUser) {
           try {
-            await setDoc(doc(db, 'users', auth.currentUser.uid, 'projects', p.id), p);
+            await setDoc(doc(db, 'users', auth.currentUser.uid, 'projects', p.id), freshProject);
           } catch (e) {
             console.warn('Firestore sync deferred:', e);
           }
@@ -186,7 +236,14 @@ export const useLynkoStore = create<LynkoState>()(
       },
 
       addSample: async (s) => {
-        set((state) => ({ samples: [...state.samples, s] }));
+        set((state) => {
+          const updatedSamples = [...state.samples, s];
+          const activeId = state.activeProjectId;
+          const updatedProjects = activeId
+            ? state.projects.map(p => p.id === activeId ? { ...p, samples: updatedSamples, samplesCount: updatedSamples.length } : p)
+            : state.projects;
+          return { samples: updatedSamples, projects: updatedProjects };
+        });
         if (auth.currentUser) {
           try {
             await setDoc(doc(db, 'users', auth.currentUser.uid, 'samples', s.id), s);
@@ -197,9 +254,14 @@ export const useLynkoStore = create<LynkoState>()(
       },
 
       updateSample: async (id, updates) => {
-        set((state) => ({
-          samples: state.samples.map(s => s.id === id ? { ...s, ...updates } : s)
-        }));
+        set((state) => {
+          const updatedSamples = state.samples.map(s => s.id === id ? { ...s, ...updates } : s);
+          const activeId = state.activeProjectId;
+          const updatedProjects = activeId
+            ? state.projects.map(p => p.id === activeId ? { ...p, samples: updatedSamples, samplesCount: updatedSamples.length } : p)
+            : state.projects;
+          return { samples: updatedSamples, projects: updatedProjects };
+        });
         const sampleToSync = get().samples.find(s => s.id === id);
         if (auth.currentUser && sampleToSync) {
           try {
@@ -211,7 +273,14 @@ export const useLynkoStore = create<LynkoState>()(
       },
 
       deleteSample: async (id) => {
-        set((state) => ({ samples: state.samples.filter(s => s.id !== id) }));
+        set((state) => {
+          const updatedSamples = state.samples.filter(s => s.id !== id);
+          const activeId = state.activeProjectId;
+          const updatedProjects = activeId
+            ? state.projects.map(p => p.id === activeId ? { ...p, samples: updatedSamples, samplesCount: updatedSamples.length } : p)
+            : state.projects;
+          return { samples: updatedSamples, projects: updatedProjects };
+        });
         if (auth.currentUser) {
           try {
             await deleteDoc(doc(db, 'users', auth.currentUser.uid, 'samples', id));
@@ -228,7 +297,14 @@ export const useLynkoStore = create<LynkoState>()(
       },
 
       updateCoCData: async (updates) => {
-        set((state) => ({ cocData: { ...state.cocData, ...updates } }));
+        set((state) => {
+          const updatedCoc = { ...state.cocData, ...updates };
+          const activeId = state.activeProjectId;
+          const updatedProjects = activeId
+            ? state.projects.map(p => p.id === activeId ? { ...p, cocData: updatedCoc } : p)
+            : state.projects;
+          return { cocData: updatedCoc, projects: updatedProjects };
+        });
         if (auth.currentUser) {
           try {
             await setDoc(doc(db, 'users', auth.currentUser.uid, 'cocData', 'current'), get().cocData);
@@ -263,17 +339,25 @@ export const useLynkoStore = create<LynkoState>()(
               measurement: '0',
               unit: 'N/A',
               notes: '',
+              photoUris: [],
             });
           }
         }
 
-        set((state) => ({
-          samples: newSamples,
-          cocData: {
-            ...state.cocData,
-            sampleTypeCounts: counts,
-          }
-        }));
+        set((state) => {
+          const activeId = state.activeProjectId;
+          const updatedProjects = activeId
+            ? state.projects.map(p => p.id === activeId ? { ...p, samples: newSamples, samplesCount: newSamples.length } : p)
+            : state.projects;
+          return {
+            samples: newSamples,
+            projects: updatedProjects,
+            cocData: {
+              ...state.cocData,
+              sampleTypeCounts: counts,
+            }
+          };
+        });
 
         if (auth.currentUser) {
           try {

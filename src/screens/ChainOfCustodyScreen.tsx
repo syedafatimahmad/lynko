@@ -299,12 +299,16 @@ export default function ChainOfCustodyScreen({ navigation }: any) {
             )}
           </View>
 
-          {/* Top trigger: Edit Samples > (Opens SampleTypes) */}
+          {/* Top trigger: Edit Samples > (Opens EditSamples for Asbestos, SampleTypes for others) */}
           <TouchableOpacity 
             style={styles.editSamplesRow} 
             onPress={() => {
               clearError('samples');
-              navigation.navigate('SampleTypes');
+              if (cocData.projectType === 'Asbestos') {
+                navigation.navigate('EditSamples');
+              } else {
+                navigation.navigate('SampleTypes');
+              }
             }}
           >
             <Text style={styles.editSamplesText}>Edit Samples</Text>
@@ -320,8 +324,10 @@ export default function ChainOfCustodyScreen({ navigation }: any) {
             }}
           >
             <View style={{ flex: 1 }}>
-              <Text style={styles.batchCountTitle}>{samples.length} Bulk sample</Text>
-              <Text style={styles.batchAnalysisText}>{cocData.analysis1 || 'Asbestos PLM'}</Text>
+              <Text style={styles.batchCountTitle}>
+                {samples.length} {cocData.projectType === 'Asbestos' ? 'Asbestos Bulk sample' : 'Bulk sample'}{samples.length === 1 ? '' : 's'}
+              </Text>
+              <Text style={styles.batchAnalysisText}>{cocData.analysis1 || (cocData.projectType === 'Asbestos' ? 'Asbestos Bulk Analysis' : 'Asbestos PLM')}</Text>
               <Text style={styles.batchTurnaroundText}>{cocData.turnaround1 || 'Next-day rush'}</Text>
             </View>
             <Ionicons name="chevron-forward" size={20} color="#94A3B8" />
