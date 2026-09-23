@@ -15,6 +15,7 @@ import { useLynkoStore } from '../store/lynkoStore';
 import { Ionicons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
 
+import { colors } from '../theme/colors';
 import MapAddressPickerModal from '../components/MapAddressPickerModal';
 
 const TURNAROUND_OPTIONS = ['Same day', '24 hr', '48 hr', '3 day', '5 day'];
@@ -156,7 +157,7 @@ export default function NewProjectScreen({ navigation }: any) {
               onPress={handleUseCurrentLocation}
               disabled={locating}
             >
-              <Ionicons name="location" size={15} color="#881337" style={{ marginRight: 4 }} />
+              <Ionicons name="location" size={15} color={colors.primary} style={{ marginRight: 4 }} />
               <Text style={styles.locationLinkText}>
                 {locating ? 'Detecting location...' : '+ Use my current location'}
               </Text>
@@ -327,8 +328,8 @@ const styles = StyleSheet.create({
     borderColor: '#CBD5E1',
   },
   typeBtnSelected: {
-    backgroundColor: '#881337',
-    borderColor: '#881337',
+    backgroundColor: '#006A64',
+    borderColor: '#006A64',
   },
   typeBtnText: {
     fontSize: 13,
@@ -348,7 +349,7 @@ const styles = StyleSheet.create({
   locationLinkText: {
     fontSize: 13,
     fontWeight: '700',
-    color: '#881337',
+    color: '#006A64',
   },
   dateInputRow: {
     flexDirection: 'row',
@@ -373,8 +374,8 @@ const styles = StyleSheet.create({
     borderColor: '#E2E8F0',
   },
   tatPillSelected: {
-    backgroundColor: '#0F172A',
-    borderColor: '#0F172A',
+    backgroundColor: '#006A64',
+    borderColor: '#006A64',
   },
   tatPillText: {
     fontSize: 13,
@@ -397,12 +398,12 @@ const styles = StyleSheet.create({
   },
   startSamplingBtn: {
     height: 50,
-    backgroundColor: '#881337',
+    backgroundColor: '#006A64',
     borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#881337',
-    shadowOpacity: 0.35,
+    shadowColor: '#006A64',
+    shadowOpacity: 0.25,
     shadowRadius: 6,
     elevation: 3,
   },

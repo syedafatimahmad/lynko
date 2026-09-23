@@ -53,18 +53,38 @@ export const generatePDF = async (project: Project | null, cocData: CoCData, sam
           const safeName = escapeHtml(s.name.replace('Sample ID ', ''));
           const safeDesc = escapeHtml(s.description || '');
           const safeNotes = escapeHtml(s.notes || '');
-          const safeProp = escapeHtml(s.sampleCode || s.property || (cocData.analysis1?.toLowerCase().includes('mold') || s.volume ? 'Spore Trap' : 'Bulk'));
-          const rawVolume = s.volume || (s.measurement ? `${s.measurement}${s.unit && s.unit !== 'N/A' ? ` ${s.unit}` : ''}` : '-');
-          const safeMeas = escapeHtml(rawVolume);
-          
+
+          // Test code: sampleCode (or '1' for mold, 'PLM' for asbestos)
+          const isMoldSample = !!s.volume || !!s.flowRate || cocData.projectType === 'Mold' || (cocData.analysis1 && cocData.analysis1.toLowerCase().includes('mold'));
+          const safeTestCode = escapeHtml(s.sampleCode || (isMoldSample ? '1' : 'PLM'));
+
+          // Flow rate (air samples only)
+          const safeFlow = s.flowRate ? escapeHtml(s.flowRate) : (isMoldSample ? '15' : '-');
+
+          // Duration (air samples only)
+          const safeDuration = s.duration ? escapeHtml(s.duration) : (isMoldSample ? '5' : '-');
+
+          // Total Volume (air samples only)
+          let rawVol = '';
+          if (s.volume) {
+            rawVol = s.volume.replace(/[^0-9.]/g, '') || s.volume;
+          } else if (s.flowRate && s.duration) {
+            rawVol = (parseFloat(s.flowRate) * parseFloat(s.duration)).toFixed(0);
+          } else if (isMoldSample) {
+            rawVol = '75';
+          } else {
+            rawVol = '-';
+          }
+          const safeTotalVol = escapeHtml(rawVol);
+
           rowsHtml += `
             <tr>
-              <td class="text-center">${safeName}</td>
+              <td class="text-center bold">${safeName}</td>
               <td>${safeDesc}${safeNotes ? `<br><i>Note: ${safeNotes}</i>` : ''}</td>
-              <td class="text-center">${safeProp}</td>
-              <td class="text-center">${safeMeas}</td>
-              <td class="text-center bold">${s.analysis1Enabled !== false ? 'X' : ''}</td>
-              <td class="text-center bold">${s.analysis2Enabled ? 'X' : ''}</td>
+              <td class="text-center">${safeTestCode}</td>
+              <td class="text-center">${safeFlow}</td>
+              <td class="text-center">${safeDuration}</td>
+              <td class="text-center bold">${safeTotalVol}</td>
             </tr>
           `;
         } else {
@@ -137,16 +157,16 @@ export const generatePDF = async (project: Project | null, cocData: CoCData, sam
             </tr>
           </table>
 
-          <!-- Analysis 2-Tier Header & Sample Rows -->
+          <!-- Sample Table matching Paper CoC Screenshot 2026-09-23 203315.png -->
           <table style="margin-bottom: -1px;">
             <thead>
-              <tr>
-                <th style="width: 12%;">Sample ID</th>
-                <th style="width: 38%;">Sample Description</th>
-                <th style="width: 15%;">Type / Media</th>
-                <th style="width: 15%;">Volume / Area</th>
-                <th class="bg-teal" style="width: 10%; font-size: 9px; padding: 2px;">${escapeHtml(cocData.analysis1 || 'Analysis 1')}<br><span style="font-weight: normal; font-size: 8px;">${safeCoc.turnaround1}</span></th>
-                <th class="bg-teal" style="width: 10%; font-size: 9px; padding: 2px;">${escapeHtml(cocData.analysis2 || 'Analysis 2')}<br><span style="font-weight: normal; font-size: 8px;">${safeCoc.turnaround1}</span></th>
+              <tr class="bg-beige">
+                <th style="width: 13%; text-align: center; font-size: 9.5px; padding: 4px 2px;">Sample #<br>or ID</th>
+                <th style="width: 41%; text-align: left; font-size: 9.5px; padding: 4px 6px;">Sample Name, Location or Description</th>
+                <th style="width: 11%; text-align: center; font-size: 9.5px; padding: 4px 2px;">Test<br>Code</th>
+                <th style="width: 11%; text-align: center; font-size: 9px; padding: 4px 2px;">Flow Rate<br><span style="font-weight: normal; font-size: 7.5px;">(air samples only)</span></th>
+                <th style="width: 11%; text-align: center; font-size: 9px; padding: 4px 2px;">Duration<br><span style="font-weight: normal; font-size: 7.5px;">(air samples only)</span></th>
+                <th style="width: 13%; text-align: center; font-size: 9px; padding: 4px 2px;">Total Vol.<br><span style="font-weight: normal; font-size: 7.5px;">(air samples only)</span></th>
               </tr>
             </thead>
             <tbody>
