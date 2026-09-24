@@ -179,7 +179,7 @@ export const generatePDF = async (project: Project | null, cocData: CoCData, sam
               </td>
               <td class="bg-beige" style="width: 15%;">Date / Time:</td>
               <td style="width: 35%; vertical-align: middle;">
-
+                ${[safeCoc.samplingDate, safeCoc.samplingTime].filter(Boolean).join(' ')}
               </td>
             </tr>
             <tr>
