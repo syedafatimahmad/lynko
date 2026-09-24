@@ -12,6 +12,11 @@ export async function keepProjectFile(uri: string, extension = 'jpg'): Promise<s
   await FileSystem.makeDirectoryAsync(directory, { intermediates: true });
   const suffix = uri.split(/[?#]/)[0].match(/\.([a-zA-Z0-9]{2,5})$/)?.[1] || extension;
   const destination = `${directory}${Date.now()}_${Math.random().toString(36).slice(2)}.${suffix}`;
-  await FileSystem.copyAsync({ from: uri, to: destination });
-  return destination;
+  try {
+    await FileSystem.copyAsync({ from: uri, to: destination });
+    return destination;
+  } catch (e) {
+    // If Android print spooler or scoped storage denies copyAsync, return the valid source URI
+    return uri;
+  }
 }

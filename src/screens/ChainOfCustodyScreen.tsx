@@ -18,7 +18,6 @@ import { colors } from '../theme/colors';
 import { sampleError } from '../utils/sampleValidation';
 import { generatePDF } from '../utils/pdfGenerator';
 import SignatureModal from '../components/SignatureModal';
-import MapAddressPickerModal from '../components/MapAddressPickerModal';
 import { Ionicons } from '@expo/vector-icons';
 import * as Print from 'expo-print';
 import { formatPhoneNumber, formatZipCode } from '../utils/formatters';
@@ -28,7 +27,6 @@ export default function ChainOfCustodyScreen({ navigation }: any) {
   const updateCoCData = useLynkoStore((state) => state.updateCoCData);
   const samples = useLynkoStore((state) => state.samples);
   const [showSignature, setShowSignature] = useState(false);
-  const [showMapPicker, setShowMapPicker] = useState(false);
   const activeProject = useLynkoStore(state => state.projects.find(p => p.id === state.activeProjectId));
   const [tosAgreed, setTosAgreed] = useState(false);
   const [isEditingContacts, setIsEditingContacts] = useState(false);
@@ -249,25 +247,6 @@ export default function ChainOfCustodyScreen({ navigation }: any) {
                 />
               </View>
               <View style={styles.inputGroup}>
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-                  <Text style={styles.label}>ADDRESS / LOCATION</Text>
-                  <TouchableOpacity 
-                    style={{ flexDirection: 'row', alignItems: 'center' }} 
-                    onPress={() => setShowMapPicker(true)}
-                  >
-                    <Ionicons name="map-outline" size={15} color={colors.primaryContainer} style={{ marginRight: 3 }} />
-                    <Text style={{ fontSize: 12, fontWeight: '700', color: colors.primaryContainer }}>Pick on Map</Text>
-                  </TouchableOpacity>
-                </View>
-                <TextInput
-                  style={styles.input}
-                  value={cocData.contactAddress}
-                  onChangeText={(text) => updateCoCData({ contactAddress: text })}
-                  placeholder="San Diego, CA 92101"
-                  placeholderTextColor="#94A3B8"
-                />
-              </View>
-              <View style={styles.inputGroup}>
                 <Text style={styles.label}>PHONE NUMBER</Text>
                 <TextInput
                   style={styles.input}
@@ -282,7 +261,6 @@ export default function ChainOfCustodyScreen({ navigation }: any) {
           ) : (
             <View style={styles.contactDetailsBox}>
               <Text style={styles.contactCompany}>{cocData.contactName || 'Lynko'}</Text>
-              <Text style={styles.contactSub}>{cocData.contactAddress || 'Field Inspection Branch'}</Text>
               <Text style={styles.contactSub}>{cocData.contactPhone || 'Direct Lab Dispatch'}</Text>
             </View>
           )}
@@ -446,17 +424,6 @@ export default function ChainOfCustodyScreen({ navigation }: any) {
         />
       )}
 
-      {showMapPicker && (
-        <MapAddressPickerModal
-          visible={showMapPicker}
-          initialAddress={cocData.contactAddress}
-          onConfirm={(address, zip) => {
-            updateCoCData({ contactAddress: address, zipCode: zip });
-            setShowMapPicker(false);
-          }}
-          onCancel={() => setShowMapPicker(false)}
-        />
-      )}
     </SafeAreaView>
   );
 }

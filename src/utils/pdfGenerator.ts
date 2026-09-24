@@ -126,8 +126,8 @@ export const generatePDF = async (project: Project | null, cocData: CoCData, sam
             <tr>
               <td class="bg-beige">Date</td>
               <td>${safeCoc.samplingDate}</td>
-              <td class="bg-beige">Address</td>
-              <td>${safeCoc.contactAddress}</td>
+              <td class="bg-beige">Site Address</td>
+              <td>${escapeHtml(project?.address || safeCoc.contactAddress || '')}</td>
             </tr>
             <tr>
               <td class="bg-beige">Time</td>
@@ -287,7 +287,11 @@ export const generatePDF = async (project: Project | null, cocData: CoCData, sam
       base64: false,
     });
 
-    return await keepProjectFile(uri, 'pdf');
+    try {
+      return await keepProjectFile(uri, 'pdf');
+    } catch {
+      return uri;
+    }
   } catch (error: any) {
     console.error('Error generating PDF:', error);
     return null;

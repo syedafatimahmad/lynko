@@ -105,8 +105,13 @@ export default function SubmitCoCScreen({ route, navigation }: any) {
             const extension = uri.split(/[?#]/)[0].match(/\.([a-zA-Z0-9]{2,5})$/)?.[1] || 'jpg';
             const name = 'Sample_' + (index + 1) + '_' + sample.name.replace(/[^a-zA-Z0-9_-]/g, '_') + '_Photo_' + (photoIndex + 1) + '.' + extension;
             const destination = directory + name;
-            await FileSystem.copyAsync({ from: uri, to: destination });
-            attachments.push(destination); names.push(name); attachedPhotos++;
+            try {
+              await FileSystem.copyAsync({ from: uri, to: destination });
+              attachments.push(destination);
+            } catch {
+              attachments.push(uri);
+            }
+            names.push(name); attachedPhotos++;
           }
           if (names.length) manifest.push(sample.name + ': ' + names.join(', '));
         }
