@@ -18,6 +18,7 @@ import { colors } from '../theme/colors';
 import { sampleError } from '../utils/sampleValidation';
 import { generatePDF } from '../utils/pdfGenerator';
 import SignatureModal from '../components/SignatureModal';
+import MapAddressPickerModal from '../components/MapAddressPickerModal';
 import { Ionicons } from '@expo/vector-icons';
 import * as Print from 'expo-print';
 import { formatPhoneNumber, formatZipCode } from '../utils/formatters';
@@ -25,8 +26,10 @@ import { formatPhoneNumber, formatZipCode } from '../utils/formatters';
 export default function ChainOfCustodyScreen({ navigation }: any) {
   const cocData = useLynkoStore((state) => state.cocData);
   const updateCoCData = useLynkoStore((state) => state.updateCoCData);
+  const updateProject = useLynkoStore((state) => state.updateProject);
   const samples = useLynkoStore((state) => state.samples);
   const [showSignature, setShowSignature] = useState(false);
+  const [showMapPicker, setShowMapPicker] = useState(false);
   const activeProject = useLynkoStore(state => state.projects.find(p => p.id === state.activeProjectId));
   const [tosAgreed, setTosAgreed] = useState(false);
   const [isEditingContacts, setIsEditingContacts] = useState(false);
@@ -53,7 +56,7 @@ export default function ChainOfCustodyScreen({ navigation }: any) {
     if (previewing) return;
     setPreviewing(true);
     try {
-      const uri = await generatePDF(null, cocData, samples);
+      const uri = await generatePDF(activeProject || null, cocData, samples);
       if (uri && Platform.OS !== 'web') {
         await Print.printAsync({ uri });
       }
@@ -84,6 +87,10 @@ export default function ChainOfCustodyScreen({ navigation }: any) {
     }
     if (!cocData.description?.trim()) {
       newErrors.description = 'Project Description is required';
+    }
+    const siteLocation = activeProject?.address || cocData.contactAddress;
+    if (!siteLocation?.trim()) {
+      newErrors.siteAddress = 'Site location is required';
     }
     if (!/^\d{5}$/.test(cocData.zipCode?.trim() || '')) {
       newErrors.zipCode = 'Enter a five-digit ZIP code';
@@ -196,6 +203,40 @@ export default function ChainOfCustodyScreen({ navigation }: any) {
               <View style={styles.errorRow}>
                 <Ionicons name="alert-circle" size={13} color={colors.error} style={{ marginRight: 4 }} />
                 <Text style={styles.errorText}>{errors.description}</Text>
+              </View>
+            )}
+          </View>
+
+          <View style={styles.inputGroup}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+              <Text style={styles.label}>
+                SITE LOCATION / ADDRESS <Text style={styles.requiredAsterisk}>*</Text>
+              </Text>
+              <TouchableOpacity 
+                style={{ flexDirection: 'row', alignItems: 'center' }} 
+                onPress={() => setShowMapPicker(true)}
+              >
+                <Ionicons name="map-outline" size={15} color={colors.primaryContainer} style={{ marginRight: 3 }} />
+                <Text style={{ fontSize: 12, fontWeight: '700', color: colors.primaryContainer }}>Pick on Map</Text>
+              </TouchableOpacity>
+            </View>
+            <TextInput
+              style={[styles.input, errors.siteAddress ? styles.inputError : null]}
+              value={activeProject?.address || cocData.contactAddress}
+              onChangeText={(text) => {
+                clearError('siteAddress');
+                updateCoCData({ contactAddress: text });
+                if (activeProject) {
+                  updateProject(activeProject.id, { address: text });
+                }
+              }}
+              placeholder="e.g. 4518 Live Oak St, Dallas TX 75204"
+              placeholderTextColor="#94A3B8"
+            />
+            {errors.siteAddress && (
+              <View style={styles.errorRow}>
+                <Ionicons name="alert-circle" size={13} color={colors.error} style={{ marginRight: 4 }} />
+                <Text style={styles.errorText}>{errors.siteAddress}</Text>
               </View>
             )}
           </View>
@@ -424,6 +465,20 @@ export default function ChainOfCustodyScreen({ navigation }: any) {
         />
       )}
 
+      {showMapPicker && (
+        <MapAddressPickerModal
+          visible={showMapPicker}
+          initialAddress={activeProject?.address || cocData.contactAddress}
+          onConfirm={(address, zip) => {
+            updateCoCData({ contactAddress: address, zipCode: zip });
+            if (activeProject) {
+              updateProject(activeProject.id, { address, zipCode: zip });
+            }
+            setShowMapPicker(false);
+          }}
+          onCancel={() => setShowMapPicker(false)}
+        />
+      )}
     </SafeAreaView>
   );
 }

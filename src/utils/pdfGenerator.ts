@@ -2,7 +2,7 @@ import * as Print from 'expo-print';
 import { Platform } from 'react-native';
 import { calculateVolume } from './sampleValidation';
 import { keepProjectFile } from './projectFiles';
-import { CoCData, Project, SampleItem } from '../store/lynkoStore';
+import { useLynkoStore, CoCData, Project, SampleItem } from '../store/lynkoStore';
 import { lynkoLogoBase64 } from './lynkoLogoBase64';
 
 const escapeHtml = (unsafe: string) => {
@@ -17,6 +17,9 @@ const escapeHtml = (unsafe: string) => {
 
 export const generatePDF = async (project: Project | null, cocData: CoCData, samples: SampleItem[]) => {
   try {
+    const currentProject = project || useLynkoStore.getState().projects.find(p => p.id === useLynkoStore.getState().activeProjectId) || null;
+    const siteAddress = currentProject?.address || cocData.contactAddress || '';
+
     const signatureHtml = cocData.inspectorSignature 
       ? `<img src="${cocData.inspectorSignature}" style="max-height: 38px; max-width: 160px; margin-left: 8px;"/>`
       : '';
@@ -27,17 +30,17 @@ export const generatePDF = async (project: Project | null, cocData: CoCData, sam
 
     const safeCoc = {
       poNumber: escapeHtml(cocData.poNumber),
-      description: escapeHtml(cocData.description),
-      zipCode: escapeHtml(cocData.zipCode),
-      samplingDate: escapeHtml(cocData.samplingDate),
+      description: escapeHtml(cocData.description || currentProject?.title || ''),
+      zipCode: escapeHtml(cocData.zipCode || currentProject?.zipCode || ''),
+      samplingDate: escapeHtml(cocData.samplingDate || currentProject?.date || ''),
       samplingTime: escapeHtml(cocData.samplingTime),
       contactName: escapeHtml(cocData.contactName),
-      contactAddress: escapeHtml(cocData.contactAddress),
+      contactAddress: escapeHtml(siteAddress),
       contactPhone: escapeHtml(cocData.contactPhone),
-      sampledBy: escapeHtml(cocData.sampledBy),
+      sampledBy: escapeHtml(cocData.sampledBy || currentProject?.inspectorName || ''),
       accountInfo: escapeHtml((cocData.accountInfo || 'Lynko - DFW/47674').replace(/Alpha Environmental/gi, 'Lynko')),
       specialInstructions: escapeHtml(cocData.specialInstructions),
-      turnaround1: escapeHtml(cocData.turnaround1 || ''),
+      turnaround1: escapeHtml(cocData.turnaround1 || currentProject?.turnaround || ''),
     };
 
     const maxSamplesPerPage = 15;
