@@ -12,7 +12,6 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLynkoStore, SubmissionRecord } from '../store/lynkoStore';
 import { colors } from '../theme/colors';
-import { generatePDF } from '../utils/pdfGenerator';
 import * as Print from 'expo-print';
 import { Ionicons } from '@expo/vector-icons';
 
@@ -20,8 +19,6 @@ export default function SubmittedCoCScreen({ navigation }: any) {
   const submissions = useLynkoStore((state) => state.submissions);
   const updateSubmissionStatus = useLynkoStore((state) => state.updateSubmissionStatus);
   const deleteSubmission = useLynkoStore((state) => state.deleteSubmission);
-  const cocData = useLynkoStore((state) => state.cocData);
-  const samples = useLynkoStore((state) => state.samples);
 
   const [activeFilter, setActiveFilter] = useState<'All' | 'Dispatched' | 'Delivered'>('All');
   const [searchQuery, setSearchQuery] = useState('');
@@ -42,7 +39,8 @@ export default function SubmittedCoCScreen({ navigation }: any) {
 
   const handleViewPdf = async (sub: SubmissionRecord) => {
     try {
-      const pdfUri = await generatePDF(null, cocData, samples);
+      const pdfUri = sub.pdfUri;
+      if (!pdfUri) { Alert.alert('Archived PDF unavailable', 'This older record has no saved PDF. Open its project to prepare a new document; its current information may differ from the original submission.'); return; }
       if (pdfUri) {
         await Print.printAsync({ uri: pdfUri });
       }
@@ -52,6 +50,9 @@ export default function SubmittedCoCScreen({ navigation }: any) {
   };
 
   const handleResend = (sub: SubmissionRecord) => {
+    const project = useLynkoStore.getState().projects.find(p => p.id === sub.projectId);
+    if (!project) { Alert.alert('Choose the original project', 'This older record has no project link. Open its project from Projects.'); return; }
+    useLynkoStore.getState().setActiveProjectId(project.id);
     navigation.navigate('SubmitCoC', {
       prefillRecipient: sub.recipientEmail,
       prefillSubject: sub.subject,

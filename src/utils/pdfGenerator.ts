@@ -1,5 +1,7 @@
 import * as Print from 'expo-print';
 import { Platform } from 'react-native';
+import { calculateVolume } from './sampleValidation';
+import { keepProjectFile } from './projectFiles';
 import { CoCData, Project, SampleItem } from '../store/lynkoStore';
 import { lynkoLogoBase64 } from './lynkoLogoBase64';
 
@@ -46,7 +48,7 @@ export const generatePDF = async (project: Project | null, cocData: CoCData, sam
     for (let page = 0; page < totalPages; page++) {
       const startIndex = page * maxSamplesPerPage;
       let rowsHtml = '';
-      
+
       for (let i = 0; i < maxSamplesPerPage; i++) {
         const s = samples[startIndex + i];
         if (s) {
@@ -54,28 +56,12 @@ export const generatePDF = async (project: Project | null, cocData: CoCData, sam
           const safeDesc = escapeHtml(s.description || '');
           const safeNotes = escapeHtml(s.notes || '');
 
-          // Test code: sampleCode (or '1' for mold, 'PLM' for asbestos)
-          const isMoldSample = !!s.volume || !!s.flowRate || cocData.projectType === 'Mold' || (cocData.analysis1 && cocData.analysis1.toLowerCase().includes('mold'));
-          const safeTestCode = escapeHtml(s.sampleCode || (isMoldSample ? '1' : 'PLM'));
-
-          // Flow rate (air samples only)
-          const safeFlow = s.flowRate ? escapeHtml(s.flowRate) : (isMoldSample ? '15' : '-');
-
-          // Duration (air samples only)
-          const safeDuration = s.duration ? escapeHtml(s.duration) : (isMoldSample ? '5' : '-');
-
-          // Total Volume (air samples only)
-          let rawVol = '';
-          if (s.volume) {
-            rawVol = s.volume.replace(/[^0-9.]/g, '') || s.volume;
-          } else if (s.flowRate && s.duration) {
-            rawVol = (parseFloat(s.flowRate) * parseFloat(s.duration)).toFixed(0);
-          } else if (isMoldSample) {
-            rawVol = '75';
-          } else {
-            rawVol = '-';
-          }
-          const safeTotalVol = escapeHtml(rawVol);
+          const isMoldSample = cocData.projectType === 'Mold' || !!s.flowRate || !!s.duration;
+          const safeTestCode = escapeHtml(s.sampleCode || (isMoldSample ? '' : 'PLM'));
+          const safeFlow = escapeHtml(s.flowRate || '-');
+          const safeDuration = escapeHtml(s.duration || '-');
+          const measuredVolume = calculateVolume(s.flowRate, s.duration);
+          const safeTotalVol = measuredVolume === null ? '-' : escapeHtml(measuredVolume);
 
           rowsHtml += `
             <tr>
@@ -193,7 +179,7 @@ export const generatePDF = async (project: Project | null, cocData: CoCData, sam
               </td>
               <td class="bg-beige" style="width: 15%;">Date / Time:</td>
               <td style="width: 35%; vertical-align: middle;">
-                ${safeCoc.samplingDate} ${safeCoc.samplingTime}
+
               </td>
             </tr>
             <tr>
@@ -203,7 +189,7 @@ export const generatePDF = async (project: Project | null, cocData: CoCData, sam
               </td>
               <td class="bg-beige">Date / Time:</td>
               <td style="vertical-align: middle;">
-                ${safeCoc.samplingDate} ${safeCoc.samplingTime}
+
               </td>
             </tr>
           </table>
@@ -245,12 +231,14 @@ export const generatePDF = async (project: Project | null, cocData: CoCData, sam
             table {
               width: 100%;
               border-collapse: collapse;
+              table-layout: fixed;
               border: 1px solid black;
             }
             th, td {
               border: 1px solid black;
               padding: 3px 5px;
               vertical-align: top;
+              overflow-wrap: anywhere;
             }
             .bg-beige {
               background-color: #efece1;
@@ -299,7 +287,7 @@ export const generatePDF = async (project: Project | null, cocData: CoCData, sam
       base64: false,
     });
 
-    return uri;
+    return await keepProjectFile(uri, 'pdf');
   } catch (error: any) {
     console.error('Error generating PDF:', error);
     return null;

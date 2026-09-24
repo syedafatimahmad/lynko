@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   View,
   Text,
@@ -17,6 +17,9 @@ import * as ImagePicker from 'expo-image-picker';
 import { useLynkoStore, SampleItem } from '../store/lynkoStore';
 import { colors } from '../theme/colors';
 import ImageEditorModal from '../components/ImageEditorModal';
+import { usePreventRemove } from '@react-navigation/native';
+import { nextSampleNumber, calculateVolume, sampleError } from '../utils/sampleValidation';
+import { keepProjectFile } from '../utils/projectFiles';
 
 export default function SampleLoggerScreen({ navigation, route }: any) {
   const insets = useSafeAreaInsets();
@@ -34,41 +37,34 @@ export default function SampleLoggerScreen({ navigation, route }: any) {
   const isMold = activeProject?.projectType === 'Mold';
   const prefix = isMold ? 'M' : 'A';
 
-  // Helper to generate next sample number (e.g. A-01, M-01)
-  const getNextSampleNumber = () => {
-    if (existingSample) return existingSample.name;
-    const nextIdx = samples.length + 1;
-    return `${prefix}-${String(nextIdx).padStart(2, '0')}`;
-  };
+  const [dirty, setDirty] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const savingRef = useRef(false);
+  const allowLeave = useRef(false);
+  const change = (setter: (value: string) => void) => (value: string) => { setDirty(true); setter(value); };
 
-  const [sampleNumber, setSampleNumber] = useState(existingSample?.name || getNextSampleNumber());
-  const [sampleCode, setSampleCode] = useState(existingSample?.sampleCode || (isMold ? `Cassette ${samples.length + 1}` : ''));
-  const [flowRate, setFlowRate] = useState(existingSample?.flowRate || '15');
-  const [duration, setDuration] = useState(existingSample?.duration || '5');
+  const [sampleNumber, setSampleNumber] = useState(existingSample?.name || nextSampleNumber(samples, prefix));
+  const [sampleCode, setSampleCode] = useState(existingSample?.sampleCode || '');
+  const [flowRate, setFlowRate] = useState(existingSample ? existingSample.flowRate || '' : '15');
+  const [duration, setDuration] = useState(existingSample ? existingSample.duration || '' : '5');
   const [description, setDescription] = useState(existingSample?.description || '');
-  const [photoUris, setPhotoUris] = useState<string[]>(existingSample?.photoUris || []);
+  const [photoUris, setPhotoUris] = useState<string[]>(existingSample?.photoUris || (existingSample?.photoUri ? [existingSample.photoUri] : []));
 
   // Image editor modal
   const [editorVisible, setEditorVisible] = useState(false);
   const [editorUri, setEditorUri] = useState('');
   const [editorPhotoIdx, setEditorPhotoIdx] = useState<number | null>(null);
 
-  // Auto-calculated volume: flow rate x duration
-  const numericFlow = parseFloat(flowRate) || 0;
-  const numericDuration = parseFloat(duration) || 0;
-  const calculatedVolume = (numericFlow * numericDuration).toFixed(0);
+  const calculatedVolume = calculateVolume(flowRate, duration);
 
-  // When switching or resetting
-  useEffect(() => {
-    if (existingSample) {
-      setSampleNumber(existingSample.name);
-      setSampleCode(existingSample.sampleCode || '');
-      setFlowRate(existingSample.flowRate || '15');
-      setDuration(existingSample.duration || '5');
-      setDescription(existingSample.description || '');
-      setPhotoUris(existingSample.photoUris || []);
-    }
-  }, [existingSample]);
+  usePreventRemove(dirty, ({ data }) => {
+    if (allowLeave.current) { navigation.dispatch(data.action); return; }
+    if (savingRef.current) return;
+    Alert.alert('Unsaved sample', 'Keep editing this sample or discard your changes?', [
+      { text: 'Keep editing', style: 'cancel' },
+      { text: 'Discard changes', style: 'destructive', onPress: () => navigation.dispatch(data.action) },
+    ]);
+  });
 
   // Check if sample number is unique
   const isDuplicate = samples.some(
@@ -84,10 +80,9 @@ export default function SampleLoggerScreen({ navigation, route }: any) {
       }
       const res = await ImagePicker.launchCameraAsync({ quality: 0.8 });
       if (!res.canceled && res.assets && res.assets[0]) {
-        const uri = res.assets[0].uri;
-        setEditorUri(uri);
-        setEditorPhotoIdx(null); // new photo
-        setEditorVisible(true);
+        const uri = await keepProjectFile(res.assets[0].uri);
+        setPhotoUris(prev => [...prev, uri]);
+        setDirty(true);
       }
     } catch (e: any) {
       Alert.alert('Camera Error', e?.message || 'Could not open camera.');
@@ -96,14 +91,10 @@ export default function SampleLoggerScreen({ navigation, route }: any) {
 
   const handlePickPhoto = async () => {
     try {
-      const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (!perm.granted) {
-        Alert.alert('Permission Required', 'Gallery access is needed to pick photos.');
-        return;
-      }
       const res = await ImagePicker.launchImageLibraryAsync({ quality: 0.8, allowsMultipleSelection: true });
       if (!res.canceled && res.assets && res.assets.length > 0) {
-        const newUris = res.assets.map((a) => a.uri);
+        const newUris = await Promise.all(res.assets.map(a => keepProjectFile(a.uri)));
+        setDirty(true);
         setPhotoUris((prev) => [...prev, ...newUris]);
       }
     } catch (e: any) {
@@ -112,6 +103,7 @@ export default function SampleLoggerScreen({ navigation, route }: any) {
   };
 
   const handleEditorSave = (editedUri: string) => {
+    setDirty(true);
     if (editorPhotoIdx !== null) {
       setPhotoUris((prev) => {
         const updated = [...prev];
@@ -125,52 +117,57 @@ export default function SampleLoggerScreen({ navigation, route }: any) {
   };
 
   const handleRemovePhoto = (idx: number) => {
+    setDirty(true);
     setPhotoUris((prev) => prev.filter((_, i) => i !== idx));
   };
 
-  const saveCurrentSample = () => {
-    if (!sampleNumber.trim()) {
-      Alert.alert('Sample ID Required', 'Please enter a sample identifier (e.g. A-01 or M-01).');
+  const saveCurrentSample = async () => {
+    if (savingRef.current) return false;
+    if (!activeProject || (editSampleId && !existingSample)) {
+      Alert.alert('Project unavailable', 'Return to Projects and open the sample again.');
       return false;
     }
-
     const item: SampleItem = {
-      id: existingSample?.id || `sample_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
-      name: sampleNumber.trim(),
-      sampleCode: isMold ? sampleCode.trim() : undefined,
-      description: description.trim(),
-      flowRate: isMold ? flowRate : undefined,
-      duration: isMold ? duration : undefined,
-      volume: isMold ? `${calculatedVolume} L` : undefined,
-      photoUris,
+      ...existingSample,
+      id: existingSample?.id || 'sample_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8),
+      name: sampleNumber.trim(), description: description.trim(), photoUris,
+      ...(isMold ? { sampleCode: sampleCode.trim(), flowRate: flowRate.trim(), duration: duration.trim(),
+        volume: calculatedVolume ? calculatedVolume + ' L' : '' } : {}),
     };
-
-    if (existingSample) {
-      updateSample(existingSample.id, item);
-    } else {
-      addSample(item);
-    }
-    return true;
+    const error = sampleError(item, samples, isMold);
+    if (error) { Alert.alert('Complete this sample', error); return false; }
+    savingRef.current = true;
+    setSaving(true);
+    try {
+      item.photoUris = await Promise.all(photoUris.map(uri => keepProjectFile(uri)));
+      if (useLynkoStore.getState().activeProjectId !== activeProjectId) throw new Error('The active project changed. Please reopen this sample.');
+      if (existingSample) await updateSample(existingSample.id, item);
+      else await addSample(item);
+      setDirty(false);
+      return true;
+    } catch (error: any) {
+      Alert.alert('Sample not saved', error?.message || 'Please try again.');
+      return false;
+    } finally { savingRef.current = false; setSaving(false); }
   };
 
-  const handleDoneNextSample = () => {
-    const success = saveCurrentSample();
-    if (!success) return;
-
-    // Reset form for next sample
-    const nextIdx = samples.length + (existingSample ? 1 : 2);
-    setSampleNumber(`${prefix}-${String(nextIdx).padStart(2, '0')}`);
-    setSampleCode(isMold ? `Cassette ${nextIdx}` : '');
+  const reviewSamples = () => {
+    allowLeave.current = true;
+    navigation.popTo('ProjectSamples');
+  };
+  const handleDoneNextSample = async () => {
+    if (!await saveCurrentSample()) return;
+    if (existingSample) { reviewSamples(); return; }
+    setSampleNumber(nextSampleNumber(useLynkoStore.getState().samples, prefix));
+    // Keep pump settings for the next sample, but never invent a lab test code.
+    setSampleCode('');
     setDescription('');
     setPhotoUris([]);
   };
-
-  const handleSaveAndReview = () => {
-    if (sampleNumber.trim() || description.trim() || photoUris.length > 0) {
-      const success = saveCurrentSample();
-      if (!success) return;
-    }
-    navigation.navigate('ProjectSamples');
+  const handleSaveAndReview = async () => {
+    if (savingRef.current) return;
+    if (dirty && !await saveCurrentSample()) return;
+    reviewSamples();
   };
 
   const currentSampleIndex = existingSample
@@ -185,7 +182,7 @@ export default function SampleLoggerScreen({ navigation, route }: any) {
       <View style={styles.topHeader}>
         <TouchableOpacity
           style={styles.backBtn}
-          onPress={() => navigation.navigate('ProjectSamples')}
+          onPress={() => navigation.popTo('ProjectSamples')}
           activeOpacity={0.7}
         >
           <Ionicons name="chevron-back" size={20} color="#0F172A" />
@@ -216,7 +213,7 @@ export default function SampleLoggerScreen({ navigation, route }: any) {
           keyboardShouldPersistTaps="handled"
         >
           {/* Title */}
-          <Text style={styles.mainTitle}>{isMold ? 'Air sample' : 'New sample'}</Text>
+          <Text style={styles.mainTitle}>{existingSample ? 'Edit sample' : isMold ? 'Air sample' : 'New sample'}</Text>
 
           {/* Previous samples pills (if any) */}
           {samples.length > 0 && !existingSample && (
@@ -240,23 +237,23 @@ export default function SampleLoggerScreen({ navigation, route }: any) {
                 <TextInput
                   style={styles.input}
                   value={sampleNumber}
-                  onChangeText={setSampleNumber}
+                  onChangeText={change(setSampleNumber)}
                   placeholder="e.g. M-01"
                   placeholderTextColor="#94A3B8"
                 />
               </View>
 
               <View style={[styles.fieldCol, { flex: 1, marginLeft: 8 }]}>
-                <Text style={styles.inputLabel}>Sample code</Text>
+                <Text style={styles.inputLabel}>Test code</Text>
                 <View style={styles.codeContainer}>
                   <TextInput
                     style={[styles.input, { flex: 1, borderWidth: 0, paddingHorizontal: 0 }]}
                     value={sampleCode}
-                    onChangeText={setSampleCode}
-                    placeholder="Cassette ID"
+                    onChangeText={change(setSampleCode)}
+                    placeholder="Code from your lab"
                     placeholderTextColor="#94A3B8"
                   />
-                  <Ionicons name="barcode-outline" size={20} color="#64748B" />
+
                 </View>
               </View>
             </View>
@@ -274,7 +271,7 @@ export default function SampleLoggerScreen({ navigation, route }: any) {
               <TextInput
                 style={styles.input}
                 value={sampleNumber}
-                onChangeText={setSampleNumber}
+                onChangeText={change(setSampleNumber)}
                 placeholder="e.g. A-01"
                 placeholderTextColor="#94A3B8"
               />
@@ -282,6 +279,7 @@ export default function SampleLoggerScreen({ navigation, route }: any) {
             </View>
           )}
 
+          {isDuplicate && <Text style={{ color: '#B91C1C', marginTop: 8 }}>This sample ID is already used in this project.</Text>}
           {/* MOLD ONLY: PUMP READINGS CARD */}
           {isMold && (
             <View style={styles.pumpCard}>
@@ -294,7 +292,7 @@ export default function SampleLoggerScreen({ navigation, route }: any) {
                     <TextInput
                       style={styles.unitInput}
                       value={flowRate}
-                      onChangeText={setFlowRate}
+                      onChangeText={change(setFlowRate)}
                       keyboardType="numeric"
                       placeholder="15"
                       placeholderTextColor="#94A3B8"
@@ -309,7 +307,7 @@ export default function SampleLoggerScreen({ navigation, route }: any) {
                     <TextInput
                       style={styles.unitInput}
                       value={duration}
-                      onChangeText={setDuration}
+                      onChangeText={change(setDuration)}
                       keyboardType="numeric"
                       placeholder="5"
                       placeholderTextColor="#94A3B8"
@@ -325,7 +323,7 @@ export default function SampleLoggerScreen({ navigation, route }: any) {
                   <Text style={styles.volumeTitle}>Volume (auto)</Text>
                   <Text style={styles.volumeSubtitle}>flow × duration</Text>
                 </View>
-                <Text style={styles.volumeValue}>{calculatedVolume} L</Text>
+                <Text style={styles.volumeValue}>{calculatedVolume === null ? '—' : calculatedVolume + ' L'}</Text>
               </View>
             </View>
           )}
@@ -336,7 +334,7 @@ export default function SampleLoggerScreen({ navigation, route }: any) {
             <TextInput
               style={[styles.input, styles.descInput]}
               value={description}
-              onChangeText={setDescription}
+              onChangeText={change(setDescription)}
               placeholder={
                 isMold
                   ? 'Location / conditions — e.g. master bedroom, near stained ceiling'
@@ -386,11 +384,11 @@ export default function SampleLoggerScreen({ navigation, route }: any) {
                       >
                         <Image source={{ uri }} style={styles.photoThumbImage} />
                         <View style={styles.retakeBadge}>
-                          <Text style={styles.retakeText}>Retake / Edit</Text>
+                          <Text style={styles.retakeText}>Edit photo</Text>
                         </View>
                         <View style={styles.photoTimestampBadge}>
                           <Text style={styles.photoTimestampText}>
-                            {sampleNumber} • {new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            {sampleNumber}
                           </Text>
                         </View>
                       </TouchableOpacity>
@@ -431,18 +429,20 @@ export default function SampleLoggerScreen({ navigation, route }: any) {
         <TouchableOpacity
           style={styles.doneNextBtn}
           onPress={handleDoneNextSample}
+          disabled={saving}
           activeOpacity={0.8}
         >
           <Ionicons name="checkmark" size={20} color="#FFFFFF" style={{ marginRight: 8 }} />
-          <Text style={styles.doneNextBtnText}>✓ Done — next sample</Text>
+          <Text style={styles.doneNextBtnText}>{saving ? 'Saving…' : existingSample ? 'Save changes' : 'Done — next sample'}</Text>
         </TouchableOpacity>
 
         <TouchableOpacity
           style={styles.saveReviewLink}
           onPress={handleSaveAndReview}
+          disabled={saving}
           activeOpacity={0.7}
         >
-          <Text style={styles.saveReviewLinkText}>Save & review all samples</Text>
+          <Text style={styles.saveReviewLinkText}>{dirty ? 'Save & review all samples' : 'Review all samples'}</Text>
         </TouchableOpacity>
       </View>
 

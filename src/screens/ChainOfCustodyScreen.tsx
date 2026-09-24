@@ -15,12 +15,13 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLynkoStore } from '../store/lynkoStore';
 import { colors } from '../theme/colors';
+import { sampleError } from '../utils/sampleValidation';
 import { generatePDF } from '../utils/pdfGenerator';
 import SignatureModal from '../components/SignatureModal';
 import MapAddressPickerModal from '../components/MapAddressPickerModal';
 import { Ionicons } from '@expo/vector-icons';
 import * as Print from 'expo-print';
-import { formatPhoneNumber, formatZipCode, formatPONumber } from '../utils/formatters';
+import { formatPhoneNumber, formatZipCode } from '../utils/formatters';
 
 export default function ChainOfCustodyScreen({ navigation }: any) {
   const cocData = useLynkoStore((state) => state.cocData);
@@ -28,7 +29,7 @@ export default function ChainOfCustodyScreen({ navigation }: any) {
   const samples = useLynkoStore((state) => state.samples);
   const [showSignature, setShowSignature] = useState(false);
   const [showMapPicker, setShowMapPicker] = useState(false);
-  const [saveTemplate, setSaveTemplate] = useState(false);
+  const activeProject = useLynkoStore(state => state.projects.find(p => p.id === state.activeProjectId));
   const [tosAgreed, setTosAgreed] = useState(false);
   const [isEditingContacts, setIsEditingContacts] = useState(false);
   const [previewing, setPreviewing] = useState(false);
@@ -67,6 +68,17 @@ export default function ChainOfCustodyScreen({ navigation }: any) {
   };
 
   const handleSubmit = () => {
+    if (!activeProject) { navigation.navigate('Projects'); return; }
+    for (const sample of samples) {
+      const error = sampleError(sample, samples, activeProject.projectType === 'Mold');
+      if (error) {
+        Alert.alert('Review sample ' + sample.name, error, [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Edit sample', onPress: () => navigation.navigate('SampleLogger', { sampleId: sample.id }) },
+        ]);
+        return;
+      }
+    }
     const newErrors: { [key: string]: string } = {};
 
     if (!cocData.poNumber?.trim()) {
@@ -75,8 +87,8 @@ export default function ChainOfCustodyScreen({ navigation }: any) {
     if (!cocData.description?.trim()) {
       newErrors.description = 'Project Description is required';
     }
-    if (!cocData.zipCode?.trim()) {
-      newErrors.zipCode = 'Zip Code is required';
+    if (!/^\d{5}$/.test(cocData.zipCode?.trim() || '')) {
+      newErrors.zipCode = 'Enter a five-digit ZIP code';
     }
     if (!cocData.sampledBy?.trim()) {
       newErrors.sampledBy = 'Sampled By (Inspector Name) is required';
@@ -104,6 +116,18 @@ export default function ChainOfCustodyScreen({ navigation }: any) {
     setErrors({});
     navigation.navigate('SubmitCoC');
   };
+
+  if (!activeProject) {
+    return <SafeAreaView style={styles.safeArea}>
+      <View style={[styles.card, { margin: 20 }]}>
+        <Text style={styles.cardTitle}>Choose a project first</Text>
+        <Text style={styles.cardSubtitle}>Open a project to review its samples and Chain of Custody.</Text>
+        <TouchableOpacity style={styles.submitButton} onPress={() => navigation.navigate('Projects')}>
+          <Text style={styles.submitButtonText}>View projects</Text>
+        </TouchableOpacity>
+      </View>
+    </SafeAreaView>;
+  }
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -142,11 +166,11 @@ export default function ChainOfCustodyScreen({ navigation }: any) {
               value={cocData.poNumber}
               onChangeText={(text) => {
                 clearError('poNumber');
-                updateCoCData({ poNumber: formatPONumber(text) });
+                updateCoCData({ poNumber: text });
               }}
               placeholder="e.g. 47674"
               placeholderTextColor="#94A3B8"
-              keyboardType="number-pad"
+              autoCapitalize="characters"
             />
             {errors.poNumber && (
               <View style={styles.errorRow}>
@@ -390,10 +414,7 @@ export default function ChainOfCustodyScreen({ navigation }: any) {
             </View>
           )}
 
-          <View style={styles.toggleRow}>
-            <Text style={styles.toggleLabel}>Save as template for future projects</Text>
-            <Switch value={saveTemplate} onValueChange={setSaveTemplate} trackColor={{ true: colors.primaryContainer }} />
-          </View>
+
         </View>
         
         <View style={styles.actionButtonsRow}>

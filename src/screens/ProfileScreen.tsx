@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Alert } from 'react-native';
 import { signOut } from 'firebase/auth';
 import { auth } from '../config/firebase';
 import { colors } from '../theme/colors';
@@ -14,14 +14,26 @@ export default function ProfileScreen({ navigation }: any) {
   const clearStore = useLynkoStore((state) => state.clearStore);
 
   const handleSignOut = async () => {
+    if (useLynkoStore.getState().legacyUnassignedSamples.length > 0) {
+      Alert.alert('Review recovered samples first', 'Open Projects and assign the recovered samples to their original projects before signing out. This keeps their records safe.');
+      return;
+    }
+    if (useLynkoStore.getState().needsProjectMigration) await useLynkoStore.getState().syncFromFirestore();
+    if (useLynkoStore.getState().needsProjectMigration) {
+      Alert.alert('Saving your existing projects', 'Please wait for the project update to finish, then try signing out again.');
+      return;
+    }
+    const synced = await useLynkoStore.getState().flushPendingWrites();
+    if (!synced || Object.keys(useLynkoStore.getState().pendingWrites).length > 0) {
+      Alert.alert('Work is saved on this device', 'Connect to the internet and let your projects finish syncing before signing out.');
+      return;
+    }
     try {
       await signOut(auth);
       clearStore();
       logout();
-    } catch (e) {
-      console.error(e);
-      clearStore();
-      logout(); // Force local logout anyway
+    } catch (error) {
+      Alert.alert('Could not sign out', 'Your projects are still saved. Please try again.');
     }
   };
 

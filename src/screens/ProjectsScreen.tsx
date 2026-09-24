@@ -12,21 +12,22 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as Print from 'expo-print';
-import { useLynkoStore, Project } from '../store/lynkoStore';
+import { useLynkoStore, Project, projectCoC } from '../store/lynkoStore';
 import { generatePDF } from '../utils/pdfGenerator';
 import { colors } from '../theme/colors';
 
 export default function ProjectsScreen({ navigation }: any) {
   const projects = useLynkoStore((state) => state.projects);
-  const cocData = useLynkoStore((state) => state.cocData);
-  const samples = useLynkoStore((state) => state.samples);
-  const updateCoCData = useLynkoStore((state) => state.updateCoCData);
+  const pendingCount = useLynkoStore(state => Object.keys(state.pendingWrites).length);
+  const recoveredCount = useLynkoStore(state => state.legacyUnassignedSamples.length);
+
+
   const deleteProject = useLynkoStore((state) => state.deleteProject);
   const setActiveProjectId = useLynkoStore((state) => state.setActiveProjectId);
-  const setSamples = useLynkoStore((state) => state.setSamples);
+
   
   const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'All' | 'Draft' | 'Submitted'>('All');
+  const [statusFilter, setStatusFilter] = useState<'All' | 'Draft' | 'Submitted' | 'Email Ready'>('All');
 
   const filteredProjects = projects.filter(p => {
     const matchesSearch = 
@@ -38,7 +39,7 @@ export default function ProjectsScreen({ navigation }: any) {
     const matchesFilter = 
       statusFilter === 'All' ? true :
       statusFilter === 'Draft' ? (p.status === 'Draft' || !p.status) :
-      p.status === 'Submitted';
+      p.status === statusFilter;
 
     return matchesSearch && matchesFilter;
   });
@@ -49,12 +50,7 @@ export default function ProjectsScreen({ navigation }: any) {
         await Print.printAsync({ uri: item.pdfUri });
       } else {
         // Generate on-the-fly if legacy record
-        const uri = await generatePDF(null, {
-          ...cocData,
-          poNumber: item.poNumber,
-          description: item.description || item.title,
-          zipCode: item.zipCode,
-        }, samples);
+        const uri = await generatePDF(item, projectCoC(item), item.samples || []);
         if (uri) {
           await Print.printAsync({ uri });
         }
@@ -67,16 +63,6 @@ export default function ProjectsScreen({ navigation }: any) {
 
   const handleEditProject = (item: Project) => {
     setActiveProjectId(item.id);
-    setSamples(item.samples || []);
-    updateCoCData({
-      poNumber: item.poNumber,
-      description: item.description || item.title || '',
-      zipCode: item.zipCode || '',
-      contactAddress: item.address || '',
-      projectType: item.projectType || 'Mold',
-      turnaround1: item.turnaround || '48 hr',
-      sampledBy: item.inspectorName || 'Ali Saleh',
-    });
     navigation.navigate('ProjectSamples');
   };
 
@@ -85,10 +71,14 @@ export default function ProjectsScreen({ navigation }: any) {
       {/* Clean Header */}
       <View style={styles.header}>
         <Text style={styles.title}>Projects</Text>
-        <Text style={styles.subtitle}>Manage drafts and submitted Chains of Custody</Text>
+        <Text style={styles.subtitle}>{pendingCount ? 'Saved on this device · waiting to sync' : 'Your field sampling projects'}</Text>
       </View>
 
       <View style={styles.container}>
+        {recoveredCount > 0 && <TouchableOpacity style={styles.card} onPress={() => navigation.navigate('RecoveredSamples')}>
+          <Text style={{ color: colors.primary, fontWeight: '700' }}>Review {recoveredCount} recovered sample(s)</Text>
+          <Text>Choose their original projects before using them in a CoC.</Text>
+        </TouchableOpacity>}
         {/* Search Bar */}
         <View style={styles.searchContainer}>
           <Ionicons name="search" size={20} color={colors.secondary} style={styles.searchIcon} />
@@ -111,6 +101,7 @@ export default function ProjectsScreen({ navigation }: any) {
           {[
             { key: 'All' as const, label: 'All', count: projects.length },
             { key: 'Draft' as const, label: 'Drafts', count: projects.filter(p => p.status === 'Draft' || !p.status).length },
+            { key: 'Email Ready' as const, label: 'Email ready', count: projects.filter(p => p.status === 'Email Ready').length },
             { key: 'Submitted' as const, label: 'Submitted', count: projects.filter(p => p.status === 'Submitted').length },
           ].map(tab => (
             <TouchableOpacity
@@ -151,6 +142,7 @@ export default function ProjectsScreen({ navigation }: any) {
           }
           renderItem={({ item }) => {
             const isSubmitted = item.status === 'Submitted';
+            const emailReady = item.status === 'Email Ready';
 
             return (
               <View style={[styles.card, isSubmitted && styles.cardSubmitted]}>
@@ -172,7 +164,7 @@ export default function ProjectsScreen({ navigation }: any) {
                         style={{ marginRight: 4 }} 
                       />
                       <Text style={styles.statusBadgeText}>
-                        {isSubmitted ? 'Submitted' : 'Draft'}
+                        {isSubmitted ? 'Submitted' : emailReady ? 'Email ready' : 'Draft'}
                       </Text>
                     </View>
 
@@ -225,7 +217,7 @@ export default function ProjectsScreen({ navigation }: any) {
                   <Text style={styles.samplesCount}>🧪 {item.samplesCount || 0} Samples</Text>
 
                   <View style={styles.actionButtonsRow}>
-                    {isSubmitted ? (
+                    {isSubmitted || emailReady ? (
                       <TouchableOpacity 
                         style={styles.viewPdfButton} 
                         onPress={() => handleOpenPdf(item)}
@@ -262,7 +254,7 @@ export default function ProjectsScreen({ navigation }: any) {
       {/* Floating Add Project Action Button */}
       <TouchableOpacity 
         style={styles.fab} 
-        onPress={() => navigation.navigate('NewProject')}
+        onPress={() => navigation.push('NewProject', { projectId: undefined })}
         activeOpacity={0.8}
       >
         <Ionicons name="add" size={30} color={colors.onPrimary} />
@@ -315,10 +307,14 @@ const styles = StyleSheet.create({
   },
   filterRow: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
     marginBottom: 16,
   },
   filterChip: {
-    flex: 1,
+    flexGrow: 1,
+    minHeight: 44,
+    minWidth: 72,
     paddingVertical: 8,
     paddingHorizontal: 10,
     borderRadius: 8,

@@ -1,8 +1,10 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { doc, setDoc, deleteDoc, collection, getDocs, getDoc, writeBatch } from 'firebase/firestore';
+import { doc, setDoc, deleteDoc, collection, getDocs, getDoc } from 'firebase/firestore';
 import { db, auth } from '../config/firebase';
+import { useAuthStore } from './authStore';
+import { keepProjectFile } from '../utils/projectFiles';
 
 export interface Project {
   id: string;
@@ -11,7 +13,7 @@ export interface Project {
   projectType?: 'Mold' | 'Asbestos' | 'Both';
   address: string;
   samplesCount: number;
-  status: 'Draft' | 'Submitted';
+  status: 'Draft' | 'Submitted' | 'Email Ready';
   date: string;
   description: string;
   zipCode: string;
@@ -27,7 +29,7 @@ export interface Project {
 export interface SampleItem {
   id: string;
   name: string;
-  sampleCode?: string; // Cassette ID or test code (for Mold)
+  sampleCode?: string; // Lab test code for mold samples.
   description: string;
   flowRate?: string; // e.g. "15" L/min (for Mold)
   duration?: string; // e.g. "5" min (for Mold)
@@ -60,7 +62,7 @@ export interface SubmissionRecord {
   submittedAt: string;
   samplesCount: number;
   photosCount: number;
-  status: 'Dispatched' | 'Delivered' | 'Pending Resend';
+  status: 'Dispatched' | 'Delivered' | 'Pending Resend' | 'Email Ready';
   pdfUri?: string;
   analysisType?: string;
   turnaround?: string;
@@ -90,7 +92,16 @@ export interface CoCData {
   projectType?: 'Mold' | 'Asbestos' | 'Both';
 }
 
+interface PendingWrite { collection: string; id: string; data: object | null; revision: string; }
 interface LynkoState {
+  ownerUid: string | null;
+  pendingWrites: Record<string, PendingWrite>;
+  legacyUnassignedSamples: SampleItem[];
+  needsProjectMigration: boolean;
+  flushPendingWrites: () => Promise<boolean>;
+  queueWrite: (collection: string, id: string, data: object | null) => void;
+  saveActiveProject: () => void;
+  recoverLegacySample: (sampleId: string, projectId: string) => Promise<void>;
   projects: Project[];
   activeProjectId: string | null;
   samples: SampleItem[];
@@ -112,7 +123,7 @@ interface LynkoState {
   setSampleTypeCounts: (counts: { [key: string]: number }) => Promise<void>;
   autoFillField: (field: 'sampleId' | 'description' | 'measurement' | 'unit', value?: string) => Promise<void>;
   addSubmission: (sub: SubmissionRecord) => Promise<void>;
-  updateSubmissionStatus: (id: string, status: 'Dispatched' | 'Delivered' | 'Pending Resend') => Promise<void>;
+  updateSubmissionStatus: (id: string, status: SubmissionRecord['status']) => Promise<void>;
   deleteSubmission: (id: string) => Promise<void>;
   addRecipientEmail: (email: string) => Promise<void>;
   syncFromFirestore: () => Promise<void>;
@@ -142,13 +153,39 @@ const initialCoCData: CoCData = {
 
 const defaultRecipients = ['thelynkoapp@gmail.com', 'info@lynko.app'];
 
+/** A complete project is the unit of persistence; the old global sample pool is never opened as a project. */
+export function projectCoC(project: Partial<Project>): CoCData {
+  return {
+    ...initialCoCData,
+    samplingTime: new Date().toLocaleTimeString(),
+    poNumber: project.poNumber || '',
+    description: project.description || project.title || '',
+    zipCode: project.zipCode || '',
+    contactAddress: project.address || '',
+    sampledBy: project.inspectorName || '',
+    turnaround1: project.turnaround || '48 hr',
+    projectType: project.projectType || 'Mold',
+    analysis1: project.projectType === 'Asbestos' ? 'Asbestos PLM' : 'Mold',
+    ...project.cocData,
+    // The project inspection date is authoritative, including for pre-update records.
+    samplingDate: project.date || project.cocData?.samplingDate || new Date().toLocaleDateString('en-US'),
+  };
+}
+
+// Firestore rejects undefined fields. JSON also gives the queue an immutable snapshot.
+const snapshot = <T,>(value: T): T => JSON.parse(JSON.stringify(value));
+function editableProject(project: Project): Project {
+  // The previous PDF remains in submission history; edited work needs a new document.
+  const { pdfUri, submittedAt, recipientEmail, ...draft } = project;
+  return { ...draft, status: 'Draft' };
+}
+let flushing: Promise<boolean> | null = null;
+let syncing = false;
+
 export const useLynkoStore = create<LynkoState>()(
   persist(
     (set, get) => ({
-      projects: [],
-      activeProjectId: null,
-      samples: [],
-      equipment: [
+      projects: [], activeProjectId: null, samples: [], equipment: [
         { id: '1', name: 'Asbestos PCM Cassette', count: 0 },
         { id: '2', name: 'Asbestos TEM cassette', count: 0 },
         { id: '3', name: 'Bulk sample', count: 0 },
@@ -158,435 +195,228 @@ export const useLynkoStore = create<LynkoState>()(
         { id: '7', name: 'Spore Trap: Cassette', count: 0 },
         { id: '8', name: 'Spore Trap: Slide', count: 0 },
         { id: '9', name: 'Via-cell cassette', count: 0 },
-      ],
-      submissions: [],
-      cocData: initialCoCData,
-      recipientHistory: defaultRecipients,
+      ], submissions: [],
+      cocData: projectCoC({}), recipientHistory: defaultRecipients,
+      ownerUid: null, pendingWrites: {}, legacyUnassignedSamples: [], needsProjectMigration: false,
 
-      setActiveProjectId: (id) => set({ activeProjectId: id }),
-      setSamples: (newSamples) => set({ samples: newSamples }),
-
-      resetForNewProject: (projectData) => {
-        const freshCoc: CoCData = {
-          ...initialCoCData,
-          poNumber: projectData.poNumber || '',
-          description: projectData.description || projectData.title || '',
-          zipCode: projectData.zipCode || '',
-          contactAddress: projectData.address || initialCoCData.contactAddress,
-          samplingDate: new Date().toLocaleDateString(),
-          samplingTime: new Date().toLocaleTimeString(),
-          projectType: projectData.projectType || 'Mold',
-          sampleTypeCounts: {},
-          photos: [],
-        };
-        set({
-          activeProjectId: projectData.id || null,
-          samples: [], // Zero samples from previous project!
-          cocData: freshCoc,
-        });
+      queueWrite: (collectionName, id, data) => {
+        const uid = auth.currentUser?.uid || useAuthStore.getState().user?.uid || get().ownerUid;
+        if (!uid || (get().ownerUid && get().ownerUid !== uid)) return;
+        const key = collectionName + '/' + id;
+        set(state => ({ ownerUid: uid, pendingWrites: { ...state.pendingWrites, [key]: {
+          collection: collectionName, id, data: data === null ? null : snapshot(data),
+          revision: Date.now() + '_' + Math.random().toString(36).slice(2),
+        } } }));
+        void get().flushPendingWrites();
       },
 
-      addProject: async (p) => {
-        const freshProject: Project = {
-          ...p,
-          samples: [],
-          cocData: {
-            ...initialCoCData,
-            poNumber: p.poNumber,
-            description: p.description || p.title,
-            zipCode: p.zipCode,
-            contactAddress: p.address || initialCoCData.contactAddress,
-            projectType: p.projectType || 'Mold',
-            turnaround1: p.turnaround || '48 hr',
-            sampledBy: p.inspectorName || 'Ali Saleh',
-            sampleTypeCounts: {},
-            photos: [],
-          },
+      flushPendingWrites: async () => {
+        if (flushing) return flushing;
+        const user = auth.currentUser;
+        if (!user || (get().ownerUid && user.uid !== get().ownerUid)) return false;
+        const uid = user.uid;
+        const run = async () => {
+          const writes = Object.entries(get().pendingWrites);
+          await Promise.all(writes.map(async ([key, entry]) => {
+            try {
+              const reference = doc(db, 'users', uid, entry.collection, entry.id);
+              const operation = entry.data === null ? deleteDoc(reference) : setDoc(reference, entry.data);
+              let timer: ReturnType<typeof setTimeout> | undefined;
+              try {
+                await Promise.race([operation, new Promise<never>((_, reject) => {
+                  timer = setTimeout(() => reject(new Error('Sync will retry when online.')), 8000);
+                })]);
+              } finally { if (timer) clearTimeout(timer); }
+              // Never clear a newer edit or a different user's queue after an old request finishes.
+              if (get().ownerUid === uid && get().pendingWrites[key]?.revision === entry.revision) {
+                set(state => { const pendingWrites = { ...state.pendingWrites }; delete pendingWrites[key]; return { pendingWrites }; });
+              }
+            } catch (error) { console.warn('Project saved on device; cloud sync pending.', error); }
+          }));
+          return Object.keys(get().pendingWrites).length === 0;
         };
-        set((state) => ({
-          projects: [freshProject, ...state.projects],
-          activeProjectId: p.id,
-          samples: [], // Zero samples for new project!
-          cocData: freshProject.cocData!,
-        }));
-        if (auth.currentUser) {
-          try {
-            await setDoc(doc(db, 'users', auth.currentUser.uid, 'projects', p.id), freshProject);
-          } catch (e) {
-            console.warn('Firestore sync deferred:', e);
-          }
+        flushing = run();
+        try { return await flushing; } finally { flushing = null; }
+      },
+
+      saveActiveProject: () => {
+        const project = get().projects.find(p => p.id === get().activeProjectId);
+        if (project) get().queueWrite('projects', project.id, project);
+      },
+      recoverLegacySample: async (sampleId, projectId) => {
+        const sample = get().legacyUnassignedSamples.find(s => s.id === sampleId);
+        const project = get().projects.find(p => p.id === projectId);
+        if (!sample || !project) throw new Error('Choose an existing project and sample.');
+        const samples = project.samples || [];
+        if (samples.some(s => s.id === sample.id || s.name.trim().toLowerCase() === sample.name.trim().toLowerCase())) {
+          throw new Error('This project already has that sample or sample ID. Review it before assigning another copy.');
         }
+        await get().updateProject(projectId, { samples: [...samples, sample], samplesCount: samples.length + 1 });
+        set(state => ({ legacyUnassignedSamples: state.legacyUnassignedSamples.filter(s => s.id !== sampleId) }));
+        get().setActiveProjectId(projectId);
       },
-
+      setActiveProjectId: (id) => {
+        const project = get().projects.find(p => p.id === id);
+        set({ activeProjectId: project?.id || null, samples: project?.samples || [], cocData: projectCoC(project || {}) });
+      },
+      setSamples: (samples) => {
+        const activeId = get().activeProjectId;
+        if (!activeId || !get().projects.some(p => p.id === activeId)) return;
+        set(state => ({ samples, projects: state.projects.map(p => p.id === activeId ? { ...editableProject(p), samples, samplesCount: samples.length } : p) }));
+        get().saveActiveProject();
+      },
+      resetForNewProject: (project) => set({ activeProjectId: null, samples: [], cocData: projectCoC(project) }),
+      addProject: async (project) => {
+        const fresh = { ...project, samples: [], samplesCount: 0, cocData: projectCoC(project) };
+        set(state => ({ projects: [fresh, ...state.projects], activeProjectId: fresh.id, samples: [], cocData: fresh.cocData }));
+        get().queueWrite('projects', fresh.id, fresh);
+      },
       updateProject: async (id, updates) => {
-        set((state) => ({
-          projects: state.projects.map(p => p.id === id ? { ...p, ...updates } : p)
-        }));
-        const updated = get().projects.find(p => p.id === id);
-        if (auth.currentUser && updated) {
-          try {
-            await setDoc(doc(db, 'users', auth.currentUser.uid, 'projects', id), updated, { merge: true });
-          } catch (e) {
-            console.warn('Firestore sync deferred:', e);
-          }
-        }
+        const existing = get().projects.find(p => p.id === id);
+        if (!existing) return;
+        const contentChanged = Object.keys(updates).some(key => !['status', 'pdfUri', 'submittedAt', 'recipientEmail'].includes(key));
+        const updated = { ...(contentChanged ? editableProject(existing) : existing), ...updates };
+        set(state => ({ projects: state.projects.map(p => p.id === id ? updated : p),
+          ...(state.activeProjectId === id ? { samples: updated.samples || [], cocData: projectCoC(updated) } : {}) }));
+        get().queueWrite('projects', id, updated);
       },
-
       deleteProject: async (id) => {
-        set((state) => ({ projects: state.projects.filter(p => p.id !== id) }));
-        if (auth.currentUser) {
-          try {
-            await deleteDoc(doc(db, 'users', auth.currentUser.uid, 'projects', id));
-          } catch (e) {
-            console.warn('Firestore delete deferred:', e);
-          }
-        }
+        set(state => ({ projects: state.projects.filter(p => p.id !== id),
+          ...(state.activeProjectId === id ? { activeProjectId: null, samples: [], cocData: projectCoC({}) } : {}) }));
+        get().queueWrite('projects', id, null);
       },
-
-      addSample: async (s) => {
-        set((state) => {
-          const updatedSamples = [...state.samples, s];
-          const activeId = state.activeProjectId;
-          const updatedProjects = activeId
-            ? state.projects.map(p => p.id === activeId ? { ...p, samples: updatedSamples, samplesCount: updatedSamples.length } : p)
-            : state.projects;
-          return { samples: updatedSamples, projects: updatedProjects };
-        });
-        if (auth.currentUser) {
-          try {
-            await setDoc(doc(db, 'users', auth.currentUser.uid, 'samples', s.id), s);
-          } catch (e) {
-            console.warn('Firestore sync deferred:', e);
-          }
-        }
-      },
-
-      updateSample: async (id, updates) => {
-        set((state) => {
-          const updatedSamples = state.samples.map(s => s.id === id ? { ...s, ...updates } : s);
-          const activeId = state.activeProjectId;
-          const updatedProjects = activeId
-            ? state.projects.map(p => p.id === activeId ? { ...p, samples: updatedSamples, samplesCount: updatedSamples.length } : p)
-            : state.projects;
-          return { samples: updatedSamples, projects: updatedProjects };
-        });
-        const sampleToSync = get().samples.find(s => s.id === id);
-        if (auth.currentUser && sampleToSync) {
-          try {
-            await setDoc(doc(db, 'users', auth.currentUser.uid, 'samples', id), sampleToSync, { merge: true });
-          } catch (e) {
-            console.warn('Firestore sync deferred:', e);
-          }
-        }
-      },
-
-      deleteSample: async (id) => {
-        set((state) => {
-          const updatedSamples = state.samples.filter(s => s.id !== id);
-          const activeId = state.activeProjectId;
-          const updatedProjects = activeId
-            ? state.projects.map(p => p.id === activeId ? { ...p, samples: updatedSamples, samplesCount: updatedSamples.length } : p)
-            : state.projects;
-          return { samples: updatedSamples, projects: updatedProjects };
-        });
-        if (auth.currentUser) {
-          try {
-            await deleteDoc(doc(db, 'users', auth.currentUser.uid, 'samples', id));
-          } catch (e) {
-            console.warn('Firestore delete deferred:', e);
-          }
-        }
-      },
-
-      updateEquipment: (id, delta) => {
-        set((state) => ({
-          equipment: state.equipment.map(e => e.id === id ? { ...e, count: Math.max(0, e.count + delta) } : e)
-        }));
-      },
-
+      addSample: async (sample) => { get().setSamples([...get().samples, sample]); },
+      updateSample: async (id, updates) => { get().setSamples(get().samples.map(s => s.id === id ? { ...s, ...updates } : s)); },
+      deleteSample: async (id) => { get().setSamples(get().samples.filter(s => s.id !== id)); },
+      updateEquipment: (id, delta) => set(state => ({ equipment: state.equipment.map(e => e.id === id ? { ...e, count: Math.max(0, e.count + delta) } : e) })),
       updateCoCData: async (updates) => {
-        set((state) => {
-          const updatedCoc = { ...state.cocData, ...updates };
-          const activeId = state.activeProjectId;
-          const updatedProjects = activeId
-            ? state.projects.map(p => p.id === activeId ? { ...p, cocData: updatedCoc } : p)
-            : state.projects;
-          return { cocData: updatedCoc, projects: updatedProjects };
-        });
-        if (auth.currentUser) {
-          try {
-            await setDoc(doc(db, 'users', auth.currentUser.uid, 'cocData', 'current'), get().cocData);
-          } catch (e) {
-            console.warn('Firestore sync deferred:', e);
-          }
-        }
+        const activeId = get().activeProjectId;
+        if (!activeId || !get().projects.some(p => p.id === activeId)) return;
+        const cocData = { ...get().cocData, ...updates };
+        set(state => ({ cocData, projects: state.projects.map(p => p.id === activeId ? {
+          ...editableProject(p), cocData, poNumber: cocData.poNumber, description: cocData.description,
+          zipCode: cocData.zipCode, address: cocData.contactAddress, inspectorName: cocData.sampledBy,
+          date: cocData.samplingDate, turnaround: cocData.turnaround1,
+        } : p) }));
+        get().saveActiveProject();
       },
-
-      setSampleTypeCounts: async (counts) => {
-        let totalCount = 0;
-        Object.values(counts).forEach(c => { totalCount += c; });
-        if (totalCount === 0) totalCount = 1;
-
-        const currentSamples = get().samples;
-        const newSamples: SampleItem[] = [];
-
-        for (let i = 0; i < totalCount; i++) {
-          if (currentSamples[i]) {
-            newSamples.push({
-              ...currentSamples[i],
-              name: `${i + 1}`,
-            });
-          } else {
-            newSamples.push({
-              id: `${Date.now()}_${i + 1}`,
-              name: `${i + 1}`,
-              analysis1Enabled: true,
-              analysis2Enabled: false,
-              description: '',
-              property: 'None',
-              measurement: '0',
-              unit: 'N/A',
-              notes: '',
-              photoUris: [],
-            });
-          }
-        }
-
-        set((state) => {
-          const activeId = state.activeProjectId;
-          const updatedProjects = activeId
-            ? state.projects.map(p => p.id === activeId ? { ...p, samples: newSamples, samplesCount: newSamples.length } : p)
-            : state.projects;
-          return {
-            samples: newSamples,
-            projects: updatedProjects,
-            cocData: {
-              ...state.cocData,
-              sampleTypeCounts: counts,
-            }
-          };
-        });
-
-        if (auth.currentUser) {
-          try {
-            await setDoc(doc(db, 'users', auth.currentUser.uid, 'cocData', 'current'), get().cocData, { merge: true });
-          } catch (e) {
-            console.warn('Firestore sync deferred:', e);
-          }
-        }
-      },
-
+      // Retained for legacy screen compatibility; all writes still belong to the selected project.
+      setSampleTypeCounts: async (counts) => { await get().updateCoCData({ sampleTypeCounts: counts }); },
       autoFillField: async (field, value) => {
-        const currentSamples = get().samples;
-        let updatedSamples: SampleItem[];
-
-        if (field === 'sampleId') {
-          updatedSamples = currentSamples.map((s, idx) => ({ ...s, name: `${idx + 1}` }));
-        } else if (field === 'description') {
-          const fillVal = value || 'General Area';
-          updatedSamples = currentSamples.map(s => ({ ...s, description: s.description || fillVal }));
-        } else if (field === 'measurement') {
-          const fillVal = value || '0';
-          updatedSamples = currentSamples.map(s => ({ ...s, measurement: fillVal }));
-        } else if (field === 'unit') {
-          const fillVal = value || 'N/A';
-          updatedSamples = currentSamples.map(s => ({ ...s, unit: fillVal }));
-        } else {
-          updatedSamples = currentSamples;
-        }
-
-        set({ samples: updatedSamples });
-
-        if (auth.currentUser) {
-          const uid = auth.currentUser.uid;
-          (async () => {
-            try {
-              const batch = writeBatch(db);
-              for (const s of updatedSamples) {
-                batch.set(doc(db, 'users', uid, 'samples', s.id), s, { merge: true });
-              }
-              await batch.commit();
-            } catch (e) {
-              console.warn('Firestore sync deferred:', e);
-            }
-          })();
-        }
+        get().setSamples(get().samples.map((s, i) => field === 'sampleId' ? { ...s, name: String(i + 1) }
+          : field === 'description' ? { ...s, description: s.description || value || '' }
+          : { ...s, [field]: value || '' }));
       },
-
-      addSubmission: async (sub) => {
-        const currentProjects = get().projects;
-        const matchingProject = currentProjects.find(p => 
-          (sub.poNumber && p.poNumber && p.poNumber.trim().toLowerCase() === sub.poNumber.trim().toLowerCase()) ||
-          (sub.projectId && p.id === sub.projectId)
-        );
-
-        let updatedProjects: Project[];
-        let targetProject: Project;
-        if (matchingProject) {
-          targetProject = { 
-            ...matchingProject, 
-            status: 'Submitted' as const, 
-            samplesCount: sub.samplesCount,
-            pdfUri: sub.pdfUri,
-            submittedAt: sub.submittedAt,
-            recipientEmail: sub.recipientEmail
-          };
-          updatedProjects = currentProjects.map(p => 
-            p.id === matchingProject.id ? targetProject : p
-          );
-        } else {
-          targetProject = {
-            id: sub.projectId || `proj_${Date.now()}`,
-            poNumber: sub.poNumber || 'N/A',
-            title: sub.projectTitle || 'Field Inspection CoC',
-            description: sub.projectTitle || '',
-            address: get().cocData.contactAddress || 'Field Inspection Branch',
-            zipCode: get().cocData.zipCode || '',
-            samplesCount: sub.samplesCount,
-            status: 'Submitted',
-            date: new Date().toLocaleDateString(),
-            pdfUri: sub.pdfUri,
-            submittedAt: sub.submittedAt,
-            recipientEmail: sub.recipientEmail,
-          };
-          updatedProjects = [targetProject, ...currentProjects];
-        }
-
-        // Instant local state update (<1ms)
-        set((state) => ({ 
-          submissions: [sub, ...state.submissions],
-          projects: updatedProjects,
-        }));
-
-        // Non-blocking background Firestore sync of ONLY the submission and the target project
-        if (auth.currentUser) {
-          const uid = auth.currentUser.uid;
-          (async () => {
-            try {
-              await Promise.all([
-                setDoc(doc(db, 'users', uid, 'submissions', sub.id), sub),
-                setDoc(doc(db, 'users', uid, 'projects', targetProject.id), targetProject, { merge: true }),
-              ]);
-            } catch (e) {
-              console.warn('Firestore submission sync deferred:', e);
-            }
-          })();
-        }
+      addSubmission: async (submission) => {
+        // A PO number is a user-editable label, never a project identifier.
+        const project = get().projects.find(p => p.id === submission.projectId);
+        if (!project) throw new Error('Open the project before preparing its email.');
+        const status = submission.status === 'Email Ready' ? 'Email Ready' : submission.status === 'Pending Resend' ? project.status : 'Submitted';
+        set(state => ({ submissions: [submission, ...state.submissions] }));
+        get().queueWrite('submissions', submission.id, submission);
+        await get().updateProject(project.id, { status, pdfUri: submission.pdfUri,
+          submittedAt: submission.submittedAt, recipientEmail: submission.recipientEmail });
       },
-
       updateSubmissionStatus: async (id, status) => {
-        const updatedSubmissions = get().submissions.map(s => s.id === id ? { ...s, status } : s);
-        const sub = updatedSubmissions.find(s => s.id === id);
-        
-        let updatedProjects = get().projects;
-        let matchingProj: Project | undefined;
-        if (sub) {
-          matchingProj = updatedProjects.find(p => p.poNumber && p.poNumber === sub.poNumber);
-          if (matchingProj) {
-            const projStatus: 'Draft' | 'Submitted' = 'Submitted';
-            updatedProjects = updatedProjects.map(p => p.id === matchingProj!.id ? { ...p, status: projStatus } : p);
-          }
-        }
-
-        set({
-          submissions: updatedSubmissions,
-          projects: updatedProjects,
-        });
-
-        const updated = updatedSubmissions.find(s => s.id === id);
-        if (auth.currentUser && updated) {
-          const uid = auth.currentUser.uid;
-          (async () => {
-            try {
-              const promises: Promise<any>[] = [
-                setDoc(doc(db, 'users', uid, 'submissions', id), updated, { merge: true })
-              ];
-              if (matchingProj) {
-                const targetProj = updatedProjects.find(p => p.id === matchingProj!.id);
-                if (targetProj) {
-                  promises.push(setDoc(doc(db, 'users', uid, 'projects', targetProj.id), targetProj, { merge: true }));
-                }
-              }
-              await Promise.all(promises);
-            } catch (e) {
-              console.warn('Firestore submission update deferred:', e);
-            }
-          })();
+        const existing = get().submissions.find(s => s.id === id);
+        if (!existing) return;
+        const submission = { ...existing, status };
+        set(state => ({ submissions: state.submissions.map(s => s.id === id ? submission : s) }));
+        get().queueWrite('submissions', id, submission);
+        if (submission.projectId && (status === 'Delivered' || status === 'Dispatched')) {
+          await get().updateProject(submission.projectId, { status: 'Submitted' });
         }
       },
-
       deleteSubmission: async (id) => {
-        set((state) => ({ submissions: state.submissions.filter(s => s.id !== id) }));
-        if (auth.currentUser) {
-          const uid = auth.currentUser.uid;
-          deleteDoc(doc(db, 'users', uid, 'submissions', id)).catch(e => {
-            console.warn('Firestore submission delete deferred:', e);
-          });
-        }
+        set(state => ({ submissions: state.submissions.filter(s => s.id !== id) }));
+        get().queueWrite('submissions', id, null);
       },
-
       addRecipientEmail: async (email) => {
         const clean = email.trim().toLowerCase();
         if (!clean) return;
-        set((state) => {
-          const filtered = state.recipientHistory.filter(e => e.toLowerCase() !== clean);
-          return { recipientHistory: [clean, ...filtered].slice(0, 10) };
-        });
-        if (auth.currentUser) {
-          const uid = auth.currentUser.uid;
-          const updatedHistory = get().recipientHistory;
-          setDoc(doc(db, 'users', uid, 'settings', 'recipients'), {
-            history: updatedHistory
-          }, { merge: true }).catch(e => {
-            console.warn('Firestore recipients sync deferred:', e);
-          });
-        }
+        const history = [clean, ...get().recipientHistory.filter(e => e.toLowerCase() !== clean)].slice(0, 10);
+        set({ recipientHistory: history }); get().queueWrite('settings', 'recipients', { history });
       },
-
       syncFromFirestore: async () => {
+        if (syncing) return;
         const user = auth.currentUser;
         if (!user) return;
-        
-        try {
-          // Fetch Projects
-          const pSnap = await getDocs(collection(db, 'users', user.uid, 'projects'));
-          const fetchedProjects = pSnap.docs.map(d => d.data() as Project);
-          
-          // Fetch Samples
-          const sSnap = await getDocs(collection(db, 'users', user.uid, 'samples'));
-          const fetchedSamples = sSnap.docs.map(d => d.data() as SampleItem);
-          
-          // Fetch CoC
-          const cSnap = await getDoc(doc(db, 'users', user.uid, 'cocData', 'current'));
-          const fetchedCoC = cSnap.exists() ? cSnap.data() as CoCData : initialCoCData;
-
-          // Fetch Submissions
-          const subSnap = await getDocs(collection(db, 'users', user.uid, 'submissions'));
-          const fetchedSubmissions = subSnap.docs.map(d => d.data() as SubmissionRecord);
-
-          // Fetch Recipient History
-          const rSnap = await getDoc(doc(db, 'users', user.uid, 'settings', 'recipients'));
-          const fetchedRecipients = rSnap.exists() && rSnap.data()?.history ? rSnap.data()?.history : defaultRecipients;
-          
-          set({ 
-            projects: fetchedProjects.length > 0 ? fetchedProjects : get().projects, 
-            samples: fetchedSamples.length > 0 ? fetchedSamples : get().samples, 
-            cocData: fetchedCoC,
-            submissions: fetchedSubmissions.length > 0 ? fetchedSubmissions : get().submissions,
-            recipientHistory: fetchedRecipients
+        if (get().ownerUid && get().ownerUid !== user.uid) return;
+        syncing = true;
+        set({ ownerUid: user.uid });
+        // Upgrade local projects without guessing ownership of legacy global samples.
+        if (get().needsProjectMigration) {
+          const preservePhotos = async (sample: SampleItem): Promise<SampleItem> => ({
+            ...sample,
+            photoUris: await Promise.all((sample.photoUris || (sample.photoUri ? [sample.photoUri] : [])).map(async uri => {
+              try { return await keepProjectFile(uri); }
+              catch { return uri; } // Preserve missing references so the inspector can identify and replace them.
+            })),
           });
-        } catch (e) {
-          console.warn("Firestore sync offline or deferred:", e);
+          for (const original of get().projects) {
+            const samples = await Promise.all((original.samples || []).map(preservePhotos));
+            if (get().ownerUid !== user.uid) { syncing = false; return; }
+            const current = get().projects.find(p => p.id === original.id);
+            if (!current) continue;
+            const updated = current === original ? { ...original, samples, cocData: projectCoC(original) } : current;
+            set(state => ({ projects: state.projects.map(p => p.id === updated.id ? updated : p),
+              ...(state.activeProjectId === updated.id ? { samples: updated.samples || [], cocData: projectCoC(updated) } : {}) }));
+            get().queueWrite('projects', updated.id, updated);
+          }
+          set({ needsProjectMigration: false });
         }
+        const localAtStart = get().projects;
+        const submissionsAtStart = get().submissions;
+        const pendingAtStart = get().pendingWrites;
+        const queuedAtStart = new Set(Object.keys(pendingAtStart));
+        try {
+          const [projectsSnapshot, submissionsSnapshot, recipientsSnapshot, legacySnapshot] = await Promise.all([
+            getDocs(collection(db, 'users', user.uid, 'projects')),
+            getDocs(collection(db, 'users', user.uid, 'submissions')),
+            getDoc(doc(db, 'users', user.uid, 'settings', 'recipients')),
+            getDocs(collection(db, 'users', user.uid, 'samples')),
+          ]);
+          if (get().ownerUid !== user.uid || auth.currentUser?.uid !== user.uid) return;
+          const merge = <T extends { id: string }>(remote: T[], local: T[], collectionName: string): T[] => {
+            const records = new Map(remote.map(record => [record.id, record]));
+            local.forEach(record => {
+              const original = (collectionName === 'projects' ? localAtStart : submissionsAtStart).find(r => r.id === record.id);
+              if (!records.has(record.id) || queuedAtStart.has(collectionName + '/' + record.id)
+                || get().pendingWrites[collectionName + '/' + record.id] || !Object.is(original, record)) records.set(record.id, record);
+            });
+            Object.values({ ...pendingAtStart, ...get().pendingWrites }).filter(w => w.collection === collectionName && w.data === null).forEach(w => records.delete(w.id));
+            (collectionName === 'projects' ? localAtStart : submissionsAtStart).filter(record => !local.some(p => p.id === record.id)).forEach(record => records.delete(record.id));
+            return [...records.values()];
+          };
+          const projects = merge(projectsSnapshot.docs.map(d => ({ ...d.data(), id: d.id }) as Project), get().projects, 'projects');
+          const submissions = merge(submissionsSnapshot.docs.map(d => ({ ...d.data(), id: d.id }) as SubmissionRecord), get().submissions, 'submissions');
+          const assigned = new Set(projects.flatMap(p => (p.samples || []).map(s => s.id)));
+          const legacyUnassignedSamples = [...new Map([...get().legacyUnassignedSamples, ...legacySnapshot.docs.map(d => ({ ...d.data(), id: d.id }) as SampleItem)].filter(s => !assigned.has(s.id)).map(s => [s.id, s])).values()];
+          const active = projects.find(p => p.id === get().activeProjectId);
+          set({ projects, submissions, legacyUnassignedSamples,
+            activeProjectId: active?.id || null, samples: active?.samples || [], cocData: projectCoC(active || {}),
+            recipientHistory: get().pendingWrites['settings/recipients'] ? get().recipientHistory
+              : recipientsSnapshot.exists() ? recipientsSnapshot.data().history || defaultRecipients : get().recipientHistory,
+          });
+          void get().flushPendingWrites();
+        } catch (error) { console.warn('Using projects saved on this device.', error); }
+        finally { syncing = false; }
       },
-
-      clearStore: () => {
-        set({ projects: [], samples: [], submissions: [], cocData: initialCoCData, recipientHistory: defaultRecipients });
-      }
+      clearStore: () => set({ projects: [], activeProjectId: null, samples: [], submissions: [],
+        cocData: projectCoC({}), recipientHistory: defaultRecipients, ownerUid: null,
+        pendingWrites: {}, legacyUnassignedSamples: [], needsProjectMigration: false }),
     }),
     {
-      name: 'lynko-data-storage',
+      name: 'lynko-data-storage', version: 2,
       storage: createJSONStorage(() => AsyncStorage),
+      migrate: (persisted: any) => {
+        // Preserve every old project and any unassigned samples for manual recovery.
+        const projects: Project[] = persisted.projects || [];
+        const known = new Set(projects.flatMap(p => (p.samples || []).map(s => s.id)));
+        return { ...persisted, projects, pendingWrites: {}, ownerUid: null, needsProjectMigration: true,
+          legacyUnassignedSamples: (persisted.samples || []).filter((s: SampleItem) => !known.has(s.id)),
+          activeProjectId: null, samples: [], cocData: projectCoC({}) };
+      },
     }
   )
 );

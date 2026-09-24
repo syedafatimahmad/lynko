@@ -11,28 +11,33 @@ import {
   Alert,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useLynkoStore } from '../store/lynkoStore';
+import { useLynkoStore, projectCoC } from '../store/lynkoStore';
 import { Ionicons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
 
 import { colors } from '../theme/colors';
+import { validInspectionDate } from '../utils/sampleValidation';
+import { useAuthStore } from '../store/authStore';
 import MapAddressPickerModal from '../components/MapAddressPickerModal';
 
 const TURNAROUND_OPTIONS = ['Same day', '24 hr', '48 hr', '3 day', '5 day'];
 
-export default function NewProjectScreen({ navigation }: any) {
+export default function NewProjectScreen({ navigation, route }: any) {
   const insets = useSafeAreaInsets();
+  const project = useLynkoStore(state => state.projects.find(p => p.id === route.params?.projectId));
+  const updateProject = useLynkoStore(state => state.updateProject);
+  const user = useAuthStore(state => state.user);
   const addProject = useLynkoStore((state) => state.addProject);
 
-  const [projectType, setProjectType] = useState<'Mold' | 'Asbestos'>('Mold');
-  const [address, setAddress] = useState('');
-  const [zip, setZip] = useState('');
+  const [projectType, setProjectType] = useState<'Mold' | 'Asbestos' | 'Both'>(project?.projectType || 'Mold');
+  const [address, setAddress] = useState(project?.address || '');
+  const [zip, setZip] = useState(project?.zipCode || '');
   const [date, setDate] = useState(
-    new Date().toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' })
+    project?.date || new Date().toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' })
   );
-  const [turnaround, setTurnaround] = useState('48 hr');
-  const [inspectorName, setInspectorName] = useState('Ali Saleh');
-  const [poNumber, setPoNumber] = useState('');
+  const [turnaround, setTurnaround] = useState(project?.turnaround || '48 hr');
+  const [inspectorName, setInspectorName] = useState(project?.inspectorName || user?.displayName || '');
+  const [poNumber, setPoNumber] = useState(project?.poNumber || '');
   const [locating, setLocating] = useState(false);
   const [showMapPicker, setShowMapPicker] = useState(false);
 
@@ -65,39 +70,46 @@ export default function NewProjectScreen({ navigation }: any) {
   };
 
   const handleStartSampling = () => {
-    const finalAddress = address.trim() || 'Job Site Location';
-    const finalPo = poNumber.trim() || `PO-${Date.now().toString().slice(-5)}`;
-    const finalTitle = `${projectType} Inspection - ${finalAddress}`;
-    const projectId = Date.now().toString();
-
-    addProject({
-      id: projectId,
-      title: finalTitle,
-      poNumber: finalPo,
-      projectType,
-      address: finalAddress,
-      zipCode: zip.trim(),
-      description: finalTitle,
-      turnaround,
-      inspectorName: inspectorName.trim() || 'Ali Saleh',
-      samplesCount: 0,
-      status: 'Draft',
-      date,
-      samples: [],
-    });
-
-    // Directly open the fast sample logger for sample #1
-    navigation.replace('SampleLogger');
+    if (!address.trim() || !inspectorName.trim()) {
+      Alert.alert('Project information', 'Enter the property address and inspector name.');
+      return;
+    }
+    const finalZip = zip.trim() || address.match(/\b(\d{5})(?:-\d{4})?\s*$/)?.[1] || '';
+    if (!/^\d{5}$/.test(finalZip)) {
+      Alert.alert('ZIP code', 'Enter the five-digit ZIP code for this property.');
+      return;
+    }
+    if (!validInspectionDate(date.trim())) {
+      Alert.alert('Inspection date', 'Enter a valid date as MM/DD/YYYY.');
+      return;
+    }
+    const finalAddress = address.trim();
+    const finalPo = poNumber.trim() || 'PO-' + Date.now();
+    const previousTitle = project ? project.projectType + ' Inspection - ' + project.address : '';
+    const title = project?.title && project.title !== previousTitle ? project.title : projectType + ' Inspection - ' + finalAddress;
+    const details = { title, poNumber: finalPo, projectType, address: finalAddress, zipCode: finalZip,
+      description: project?.description && project.description !== previousTitle ? project.description : title, turnaround, inspectorName: inspectorName.trim(), date: date.trim() };
+    if (project) {
+      void updateProject(project.id, { ...details, cocData: { ...projectCoC(project),
+        poNumber: finalPo, description: details.description, contactAddress: finalAddress, zipCode: finalZip,
+        samplingDate: date.trim(), sampledBy: inspectorName.trim(), turnaround1: turnaround, projectType,
+      } });
+      navigation.goBack();
+    } else {
+      void addProject({ ...details, id: Date.now() + '_' + Math.random().toString(36).slice(2, 8),
+        samplesCount: 0, status: 'Draft', samples: [] });
+      navigation.replace('SampleLogger');
+    }
   };
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      {/* Top Header: Cancel (left) | STEP 1 OF 2 (right) */}
+      {/* Project details header */}
       <View style={styles.topHeader}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.cancelBtn}>
           <Text style={styles.cancelText}>Cancel</Text>
         </TouchableOpacity>
-        <Text style={styles.stepIndicatorText}>STEP 1 OF 2</Text>
+        <Text style={styles.stepIndicatorText}>{project ? 'EDIT PROJECT' : 'PROJECT DETAILS'}</Text>
       </View>
 
       <KeyboardAvoidingView
@@ -124,6 +136,7 @@ export default function NewProjectScreen({ navigation }: any) {
                   <TouchableOpacity
                     key={type}
                     style={[styles.typeBtn, isSelected && styles.typeBtnSelected]}
+                    disabled={!!project?.samples?.length}
                     onPress={() => setProjectType(type)}
                     activeOpacity={0.8}
                   >
@@ -134,7 +147,7 @@ export default function NewProjectScreen({ navigation }: any) {
                       style={{ marginRight: 6 }}
                     />
                     <Text style={[styles.typeBtnText, isSelected && styles.typeBtnTextSelected]}>
-                      {type === 'Mold' ? 'Mold (Air / Surface)' : 'Asbestos (Bulk)'}
+                      {type === 'Mold' ? 'Mold (Air)' : 'Asbestos (Bulk)'}
                     </Text>
                   </TouchableOpacity>
                 );
@@ -164,6 +177,12 @@ export default function NewProjectScreen({ navigation }: any) {
             </TouchableOpacity>
           </View>
 
+          <View style={styles.inputGroup}>
+            <Text style={styles.inputLabel}>ZIP code</Text>
+            <TextInput style={styles.input} value={zip} onChangeText={text => setZip(text.replace(/\D/g, '').slice(0, 5))}
+              placeholder="e.g. 75204" keyboardType="number-pad" maxLength={5} />
+          </View>
+
           {/* Date of inspection */}
           <View style={styles.inputGroup}>
             <Text style={styles.inputLabel}>Date of inspection</Text>
@@ -175,7 +194,7 @@ export default function NewProjectScreen({ navigation }: any) {
                 placeholder="MM/DD/YYYY"
                 placeholderTextColor="#94A3B8"
               />
-              <Ionicons name="calendar-outline" size={20} color="#64748B" />
+
             </View>
           </View>
 
@@ -239,7 +258,7 @@ export default function NewProjectScreen({ navigation }: any) {
           onPress={handleStartSampling}
           activeOpacity={0.8}
         >
-          <Text style={styles.startSamplingBtnText}>Start sampling →</Text>
+          <Text style={styles.startSamplingBtnText}>{project ? 'Save changes' : 'Start sampling →'}</Text>
         </TouchableOpacity>
       </View>
 

@@ -38,10 +38,11 @@ export default function ProjectSamplesScreen({ navigation }: any) {
   };
 
   const handleAddNewSample = () => {
-    navigation.navigate('SampleLogger');
+    navigation.push('SampleLogger', { sampleId: undefined });
   };
 
   const handleFinishProject = () => {
+    if (!activeProject) { navigation.navigate('AppTabs'); return; }
     if (samples.length === 0) {
       Alert.alert('No Samples Logged', 'Please log at least one sample before finishing the project.');
       return;
@@ -179,7 +180,7 @@ export default function ProjectSamplesScreen({ navigation }: any) {
 
         <TouchableOpacity
           style={styles.editInfoBtn}
-          onPress={() => navigation.navigate('NewProject')}
+          onPress={() => navigation.navigate('NewProject', { projectId: activeProjectId })}
           activeOpacity={0.7}
         >
           <Text style={styles.editInfoText}>Edit info</Text>

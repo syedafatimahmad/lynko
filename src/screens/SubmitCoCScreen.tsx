@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -21,6 +21,8 @@ import { useAuthStore } from '../store/authStore';
 import { useLynkoStore, SubmissionRecord } from '../store/lynkoStore';
 import { colors } from '../theme/colors';
 import { generatePDF } from '../utils/pdfGenerator';
+import { mailOutcome } from '../utils/mailOutcome';
+import { sampleError } from '../utils/sampleValidation';
 
 export default function SubmitCoCScreen({ route, navigation }: any) {
   const user = useAuthStore((state) => state.user);
@@ -31,23 +33,13 @@ export default function SubmitCoCScreen({ route, navigation }: any) {
   const addRecipientEmail = useLynkoStore((state) => state.addRecipientEmail);
   const addSubmission = useLynkoStore((state) => state.addSubmission);
 
+  const activeProjectId = useLynkoStore(state => state.activeProjectId);
+  const project = useLynkoStore(state => state.projects.find(p => p.id === state.activeProjectId));
+  const sendingRef = useRef(false);
   const totalSamplePhotos = samples.reduce((acc, s) => acc + (s.photoUris?.length || 0), 0);
 
   const buildDefaultMessage = () => {
     let msg = `Hello,\n\nPlease find attached the Chain of Custody document and project inspection details for PO #${cocData.poNumber || '47674'}.\n\nTotal Samples: ${samples.length}\nDate: ${cocData.samplingDate || new Date().toLocaleDateString()}\nSampled By: ${cocData.sampledBy || user?.displayName || 'Ali Saleh'}`;
-
-    const samplesWithPhotos = samples.filter(s => s.photoUris && s.photoUris.length > 0);
-    if (samplesWithPhotos.length > 0) {
-      msg += `\n\n--- ATTACHED SAMPLE PHOTOS MANIFEST ---`;
-      samplesWithPhotos.forEach((s, idx) => {
-        const sampleId = s.name || `${idx + 1}`;
-        const loc = s.description ? ` (${s.description})` : '';
-        const vol = s.volume ? ` [Vol: ${s.volume}]` : '';
-        const count = s.photoUris!.length;
-        const fileNames = s.photoUris!.map((_, pIdx) => `Sample_${sampleId.replace(/[^a-zA-Z0-9_-]/g, '_')}_Photo_${pIdx + 1}.jpg`).join(', ');
-        msg += `\n• Sample ${sampleId}${loc}${vol}: ${count} photo(s) [${fileNames}]`;
-      });
-    }
 
     msg += `\n\nThank you,\nLynko Inspection Team`;
     return msg;
@@ -68,106 +60,93 @@ export default function SubmitCoCScreen({ route, navigation }: any) {
   }, [route?.params?.prefillRecipient]);
 
   const handleSend = async () => {
+    if (sendingRef.current) return;
     const cleanTo = recipientEmail.trim();
-    if (!cleanTo) {
-      Alert.alert('Missing Recipient', 'Please enter a valid recipient email address.');
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanTo)) {
+      Alert.alert('Recipient email', 'Enter a valid email address for the lab or client.');
       return;
     }
-
+    if (!project || !activeProjectId || samples.length === 0) {
+      Alert.alert('Choose a project', 'Open a project with samples before preparing its email.');
+      return;
+    }
+    for (const sample of samples) {
+      const error = sampleError(sample, samples, project.projectType === 'Mold');
+      if (error) { Alert.alert('Review sample ' + sample.name, error); return; }
+    }
+    sendingRef.current = true;
     setSending(true);
     try {
-      // 1. Non-blocking recipient history update
-      addRecipientEmail(cleanTo);
-
-      // 2. Generate PDF
-      const pdfUri = await generatePDF(null, cocData, samples);
-      if (!pdfUri) {
-        Alert.alert('Error', 'Failed to generate Chain of Custody PDF.');
-        setSending(false);
+      const pdfUri = await generatePDF(project, cocData, samples);
+      if (!pdfUri) throw new Error('Could not generate the Chain of Custody PDF.');
+      if (!await MailComposer.isAvailableAsync()) {
+        Alert.alert('Set up an email app', 'Configure an email account on this device, then try again. You can also share the PDF separately.', [
+          { text: 'OK' },
+          { text: 'Share PDF', onPress: async () => {
+            try { if (await Sharing.isAvailableAsync()) await Sharing.shareAsync(pdfUri); }
+            catch { Alert.alert('Share unavailable', 'Please try again.'); }
+          } },
+        ]);
         return;
       }
-
-      // 3. Immediately record submission in local store (marks project as Submitted)
-      const submissionRecord: SubmissionRecord = {
-        id: `${Date.now()}_${cocData.poNumber || 'sub'}`,
-        poNumber: cocData.poNumber || 'N/A',
-        projectTitle: cocData.description || 'Field Inspection CoC',
-        recipientEmail: cleanTo,
-        senderEmail: user?.email || '',
-        subject: subject,
-        submittedAt: `${new Date().toLocaleDateString()} at ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`,
-        samplesCount: samples.length,
-        photosCount: totalSamplePhotos,
-        status: 'Dispatched',
-        pdfUri: pdfUri,
-        turnaround: cocData.turnaround1 || 'Next-day rush',
-        analysisType: cocData.analysis1 || 'Asbestos PLM',
-      };
-
-      await addSubmission(submissionRecord);
-
-      // 4. Attach per-sample photos with Sample ID in the filename
-      const attachPhotos = cocData.attachPhotosToEmail !== false;
-      const photoAttachments: string[] = [];
-
-      if (attachPhotos) {
-        for (let i = 0; i < samples.length; i++) {
-          const sample = samples[i];
-          if (sample.photoUris && sample.photoUris.length > 0) {
-            const cleanSampleId = (sample.name || `${i + 1}`).replace(/[^a-zA-Z0-9_-]/g, '_');
-            for (let pIdx = 0; pIdx < sample.photoUris.length; pIdx++) {
-              const srcUri = sample.photoUris[pIdx];
-              if (srcUri && (srcUri.startsWith('file://') || srcUri.startsWith('content://'))) {
-                try {
-                  const targetFileName = `Sample_${cleanSampleId}_Photo_${pIdx + 1}.jpg`;
-                  const targetUri = `${FileSystem.cacheDirectory}${targetFileName}`;
-                  await FileSystem.copyAsync({ from: srcUri, to: targetUri });
-                  photoAttachments.push(targetUri);
-                } catch (copyErr) {
-                  console.warn('Could not rename photo, using original URI:', copyErr);
-                  photoAttachments.push(srcUri);
-                }
-              }
-            }
+      const attachments = [pdfUri];
+      const manifest: string[] = [];
+      let attachedPhotos = 0;
+      if (cocData.attachPhotosToEmail !== false) {
+        if (!FileSystem.cacheDirectory) throw new Error('Attachment storage is unavailable.');
+        const directory = FileSystem.cacheDirectory + 'email_' + Date.now() + '/';
+        await FileSystem.makeDirectoryAsync(directory, { intermediates: true });
+        for (const [index, sample] of samples.entries()) {
+          const photos = sample.photoUris || (sample.photoUri ? [sample.photoUri] : []);
+          const names: string[] = [];
+          for (const [photoIndex, uri] of photos.entries()) {
+            const info = await FileSystem.getInfoAsync(uri);
+            if (!info.exists) throw new Error('A photo for ' + sample.name + ' is missing on this device. Add it again or turn off photo attachments.');
+            const extension = uri.split(/[?#]/)[0].match(/\.([a-zA-Z0-9]{2,5})$/)?.[1] || 'jpg';
+            const name = 'Sample_' + (index + 1) + '_' + sample.name.replace(/[^a-zA-Z0-9_-]/g, '_') + '_Photo_' + (photoIndex + 1) + '.' + extension;
+            const destination = directory + name;
+            await FileSystem.copyAsync({ from: uri, to: destination });
+            attachments.push(destination); names.push(name); attachedPhotos++;
           }
+          if (names.length) manifest.push(sample.name + ': ' + names.join(', '));
         }
       }
-
-      const allAttachments = [pdfUri, ...photoAttachments];
-
-      // 5. Open mail client
-      const isAvailable = await MailComposer.isAvailableAsync();
-      if (isAvailable) {
-        await MailComposer.composeAsync({
-          recipients: [cleanTo],
-          subject: subject,
-          body: message,
-          attachments: allAttachments,
-        });
-      } else if (Platform.OS === 'web') {
-        const mailto = `mailto:${cleanTo}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(message)}`;
-        window.open(mailto, '_blank');
-      } else {
-        await Print.printAsync({ uri: pdfUri });
+      let totalBytes = 0;
+      for (const uri of attachments) {
+        const info = await FileSystem.getInfoAsync(uri);
+        if (!info.exists || info.isDirectory) throw new Error('An attachment is missing. Please prepare the email again.');
+        totalBytes += info.size;
       }
-
-      // 6. User Success Confirmation
-      Alert.alert(
-        'Chain of Custody Submitted',
-        `Successfully sent to ${cleanTo}.\n\nYour project is now updated and listed in the 'Submitted' tab with its PDF document.`,
-        [
-          { 
-            text: 'View Projects', 
-            onPress: () => navigation.navigate('AppTabs') 
-          }
-        ]
-      );
-    } catch (err: any) {
-      console.error('Error sending CoC:', err);
-      Alert.alert('Notice', err.message || 'Action completed.');
-    } finally {
-      setSending(false);
-    }
+      // Leave headroom for MIME encoding and mail-provider limits; never silently omit evidence.
+      if (totalBytes > 15 * 1024 * 1024) {
+        Alert.alert('Attachments are too large', 'These attachments exceed the 15 MB email limit used by Lynko. Turn off photo attachments to email the PDF, and send the photos separately. Your originals remain saved.');
+        return;
+      }
+      const result = await MailComposer.composeAsync({ recipients: [cleanTo], subject, attachments,
+        body: message + (manifest.length ? '\n\nAttached sample photos:\n' + manifest.join('\n') : ''),
+      });
+      const outcome = mailOutcome(Platform.OS, result.status);
+      if (outcome === 'cancelled' || outcome === 'saved') {
+        Alert.alert(outcome === 'cancelled' ? 'Email cancelled' : 'Email saved as a draft', 'The project has not been marked as submitted.');
+        return;
+      }
+      const submissionRecord: SubmissionRecord = {
+        id: Date.now() + '_' + Math.random().toString(36).slice(2, 8), projectId: activeProjectId,
+        poNumber: cocData.poNumber, projectTitle: cocData.description, recipientEmail: cleanTo,
+        senderEmail: '', subject, submittedAt: new Date().toLocaleString(),
+        samplesCount: samples.length, photosCount: attachedPhotos, pdfUri,
+        status: outcome === 'sent' ? 'Dispatched' : 'Email Ready',
+        turnaround: cocData.turnaround1, analysisType: project.projectType,
+      };
+      await addSubmission(submissionRecord);
+      void addRecipientEmail(cleanTo);
+      Alert.alert(outcome === 'sent' ? 'Email sent' : 'Opened in email app',
+        outcome === 'sent' ? 'Your email app reports that the message was sent. Delivery is not confirmed.'
+          : 'Complete sending in your email app. Lynko cannot confirm whether the email was sent; this project is marked Email ready.',
+        [{ text: 'View projects', onPress: () => navigation.navigate('AppTabs', { screen: 'Projects' }) }]);
+    } catch (error: any) {
+      Alert.alert('Email not completed', error?.message || 'Please try again.');
+    } finally { sendingRef.current = false; setSending(false); }
   };
 
   const handleQuickPreview = async () => {
@@ -196,10 +175,10 @@ export default function SubmitCoCScreen({ route, navigation }: any) {
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         {/* Card 1: Sender Context */}
         <View style={styles.card}>
-          <Text style={styles.cardLabel}>FROM (AUTHENTICATED SENDER)</Text>
+          <Text style={styles.cardLabel}>EMAIL ACCOUNT</Text>
           <View style={styles.senderRow}>
             <Ionicons name="person-circle" size={22} color={colors.primaryContainer} style={{ marginRight: 8 }} />
-            <Text style={styles.senderEmail}>{user?.email || 'inspector@lynko.app'}</Text>
+            <Text style={styles.senderEmail}>Your email app chooses the sending account</Text>
           </View>
         </View>
 
@@ -284,7 +263,7 @@ export default function SubmitCoCScreen({ route, navigation }: any) {
             <View style={{ marginLeft: 12, flex: 1 }}>
               <Text style={styles.attachmentName}>ChainOfCustody_{cocData.poNumber || '47674'}.pdf</Text>
               <Text style={styles.attachmentSize}>
-                {samples.length} Samples • {totalSamplePhotos} Sample Photo(s) Attached
+                {samples.length} Samples • {cocData.attachPhotosToEmail === false ? 0 : totalSamplePhotos} Sample Photo(s) Attached
               </Text>
             </View>
           </View>
@@ -310,7 +289,7 @@ export default function SubmitCoCScreen({ route, navigation }: any) {
           ) : (
             <View style={styles.sendButtonContent}>
               <Ionicons name="send" size={18} color="#ffffff" style={{ marginRight: 8 }} />
-              <Text style={styles.sendButtonText}>Send Chain of Custody (Email PDF)</Text>
+              <Text style={styles.sendButtonText}>Open email with PDF</Text>
             </View>
           )}
         </TouchableOpacity>
