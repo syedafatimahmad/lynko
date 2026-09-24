@@ -12,6 +12,9 @@ ios/
 
 # Documentation, markdown and IDE files
 *.md
+*.pdf
+*.apk
+*.aab
 .git/
 .vscode/
 .idea/
