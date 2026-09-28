@@ -40,6 +40,7 @@ export default function SampleLoggerScreen({ navigation, route }: any) {
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
   const savingRef = useRef(false);
+  const cameraOpeningRef = useRef(false);
   const allowLeave = useRef(false);
   const change = (setter: (value: string) => void) => (value: string) => { setDirty(true); setter(value); };
 
@@ -72,13 +73,15 @@ export default function SampleLoggerScreen({ navigation, route }: any) {
   );
 
   const handleTakePhoto = async () => {
+    if (cameraOpeningRef.current) return;
+    cameraOpeningRef.current = true;
     try {
       const perm = await ImagePicker.requestCameraPermissionsAsync();
       if (!perm.granted) {
         Alert.alert('Permission Required', 'Camera permission is needed to snap inspection photos.');
         return;
       }
-      const res = await ImagePicker.launchCameraAsync({ quality: 0.8 });
+      const res = await ImagePicker.launchCameraAsync({ mediaTypes: ['images'], allowsEditing: false, quality: 0.7 });
       if (!res.canceled && res.assets && res.assets[0]) {
         const uri = await keepProjectFile(res.assets[0].uri);
         setPhotoUris(prev => [...prev, uri]);
@@ -86,6 +89,8 @@ export default function SampleLoggerScreen({ navigation, route }: any) {
       }
     } catch (e: any) {
       Alert.alert('Camera Error', e?.message || 'Could not open camera.');
+    } finally {
+      cameraOpeningRef.current = false;
     }
   };
 

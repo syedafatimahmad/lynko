@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { View, Text, StyleSheet, FlatList, TouchableOpacity, Switch, TextInput, Alert, Modal, Image, ScrollView } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
@@ -6,6 +6,7 @@ import { useLynkoStore, SampleItem } from '../store/lynkoStore';
 import { colors } from '../theme/colors';
 import { Ionicons } from '@expo/vector-icons';
 import ImageEditorModal from '../components/ImageEditorModal';
+import { keepProjectFile } from '../utils/projectFiles';
 
 export default function EditSamplesScreen({ navigation }: any) {
   const insets = useSafeAreaInsets();
@@ -32,6 +33,7 @@ export default function EditSamplesScreen({ navigation }: any) {
 
   // Image Editor Modal state (CompanyCam style markup)
   const [editorVisible, setEditorVisible] = useState(false);
+  const cameraOpeningRef = useRef(false);
   const [editorImageUri, setEditorImageUri] = useState('');
   const [editorTarget, setEditorTarget] = useState<{
     sampleId: string;
@@ -73,6 +75,8 @@ export default function EditSamplesScreen({ navigation }: any) {
   };
 
   const handleTakeSamplePhoto = async (sampleId: string) => {
+    if (cameraOpeningRef.current) return;
+    cameraOpeningRef.current = true;
     try {
       const permissionResult = await ImagePicker.requestCameraPermissionsAsync();
       if (!permissionResult.granted) {
@@ -80,11 +84,12 @@ export default function EditSamplesScreen({ navigation }: any) {
         return;
       }
       const result = await ImagePicker.launchCameraAsync({
+        mediaTypes: ['images'],
         allowsEditing: false,
-        quality: 0.8,
+        quality: 0.7,
       });
       if (!result.canceled && result.assets && result.assets[0]) {
-        const uri = result.assets[0].uri;
+        const uri = await keepProjectFile(result.assets[0].uri);
         // Immediately launch CompanyCam-style photo markup editor
         setEditorImageUri(uri);
         setEditorTarget({ sampleId, rawUri: uri });
@@ -93,6 +98,8 @@ export default function EditSamplesScreen({ navigation }: any) {
     } catch (error: any) {
       console.error('Error taking photo for sample:', error);
       Alert.alert('Camera Error', error?.message || 'Failed to open camera.');
+    } finally {
+      cameraOpeningRef.current = false;
     }
   };
 
