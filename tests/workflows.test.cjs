@@ -182,6 +182,24 @@ test('PDF uses measured decimal volumes, escapes text, and does not invent missi
   assert.ok(h.printed.at(-1).includes('PAGE 2 of 2')); await h.flush();
 });
 
+test('PDF prints only filled sample rows and keeps the custody footer on a short form', async () => {
+  const h = harness(); await h.state().addProject(project('A'));
+  const { generatePDF } = h.load('src/utils/pdfGenerator.ts');
+  await generatePDF(null, h.state().cocData, [sample()]);
+  const oneSample = h.printed.at(-1);
+  const sampleTables = [...oneSample.matchAll(/<tbody>([\s\S]*?)<\/tbody>/g)];
+  assert.equal(sampleTables.length, 1);
+  assert.equal((sampleTables[0][1].match(/<tr>/g) || []).length, 1);
+  assert.ok(oneSample.includes('Received by (Courier / Lab):'));
+  assert.ok(oneSample.includes('PAGE 1 of 1'));
+  assert.equal(oneSample.includes('<td>&nbsp;</td>'), false);
+
+  await generatePDF(null, h.state().cocData, Array.from({ length: 13 }, (_, i) => sample(String(i), 'M-' + i)));
+  const twoPages = [...h.printed.at(-1).matchAll(/<tbody>([\s\S]*?)<\/tbody>/g)];
+  assert.deepEqual(twoPages.map(([, body]) => (body.match(/<tr>/g) || []).length), [12, 1]);
+  await h.flush();
+});
+
 test('Email ready filter shows handoffs rather than submitted projects', async () => {
   const h = harness(); await h.state().addProject(project('ready')); await h.state().updateProject('ready', { status: 'Email Ready' });
   await h.state().addProject(project('sent')); await h.state().updateProject('sent', { status: 'Submitted' });

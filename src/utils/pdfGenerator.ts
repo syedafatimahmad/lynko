@@ -43,30 +43,30 @@ export const generatePDF = async (project: Project | null, cocData: CoCData, sam
       turnaround1: escapeHtml(cocData.turnaround1 || currentProject?.turnaround || ''),
     };
 
-    const maxSamplesPerPage = 15;
+    // Leave room for the custody/signature block on a Letter page.
+    const maxSamplesPerPage = 12;
     const totalPages = Math.max(1, Math.ceil(samples.length / maxSamplesPerPage));
 
     let pagesHtml = '';
 
     for (let page = 0; page < totalPages; page++) {
       const startIndex = page * maxSamplesPerPage;
+      const pageSamples = samples.slice(startIndex, startIndex + maxSamplesPerPage);
       let rowsHtml = '';
 
-      for (let i = 0; i < maxSamplesPerPage; i++) {
-        const s = samples[startIndex + i];
-        if (s) {
-          const safeName = escapeHtml(s.name.replace('Sample ID ', ''));
-          const safeDesc = escapeHtml(s.description || '');
-          const safeNotes = escapeHtml(s.notes || '');
+      for (const s of pageSamples) {
+        const safeName = escapeHtml(s.name.replace('Sample ID ', ''));
+        const safeDesc = escapeHtml(s.description || '');
+        const safeNotes = escapeHtml(s.notes || '');
 
-          const isMoldSample = cocData.projectType === 'Mold' || !!s.flowRate || !!s.duration;
-          const safeTestCode = escapeHtml(s.sampleCode || (isMoldSample ? '' : 'PLM'));
-          const safeFlow = escapeHtml(s.flowRate || '-');
-          const safeDuration = escapeHtml(s.duration || '-');
-          const measuredVolume = calculateVolume(s.flowRate, s.duration);
-          const safeTotalVol = measuredVolume === null ? '-' : escapeHtml(measuredVolume);
+        const isMoldSample = cocData.projectType === 'Mold' || !!s.flowRate || !!s.duration;
+        const safeTestCode = escapeHtml(s.sampleCode || (isMoldSample ? '' : 'PLM'));
+        const safeFlow = escapeHtml(s.flowRate || '-');
+        const safeDuration = escapeHtml(s.duration || '-');
+        const measuredVolume = calculateVolume(s.flowRate, s.duration);
+        const safeTotalVol = measuredVolume === null ? '-' : escapeHtml(measuredVolume);
 
-          rowsHtml += `
+        rowsHtml += `
             <tr>
               <td class="text-center bold">${safeName}</td>
               <td>${safeDesc}${safeNotes ? `<br><i>Note: ${safeNotes}</i>` : ''}</td>
@@ -75,19 +75,7 @@ export const generatePDF = async (project: Project | null, cocData: CoCData, sam
               <td class="text-center">${safeDuration}</td>
               <td class="text-center bold">${safeTotalVol}</td>
             </tr>
-          `;
-        } else {
-          rowsHtml += `
-            <tr>
-              <td>&nbsp;</td>
-              <td></td>
-              <td></td>
-              <td></td>
-              <td></td>
-              <td></td>
-            </tr>
-          `;
-        }
+        `;
       }
 
       const hasNextPage = page < totalPages - 1;
@@ -242,6 +230,9 @@ export const generatePDF = async (project: Project | null, cocData: CoCData, sam
               padding: 3px 5px;
               vertical-align: top;
               overflow-wrap: anywhere;
+            }
+            tr {
+              page-break-inside: avoid;
             }
             .bg-beige {
               background-color: #efece1;
