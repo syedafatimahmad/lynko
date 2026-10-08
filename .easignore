@@ -18,3 +18,18 @@ ios/
 .git/
 .vscode/
 .idea/
+
+# Local signing files, helper scripts and unrelated projects
+*.jks
+*.p8
+*.p12
+*.key
+*.pem
+*.der
+*.mobileprovision
+keystore_info.txt
+extract_ks.js
+upload_ks.js
+.expo-export-check/
+biulding idea and implement/
+.claude/

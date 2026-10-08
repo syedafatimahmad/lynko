@@ -85,6 +85,9 @@ export default function SampleLoggerScreen({ navigation, route }: any) {
       if (!res.canceled && res.assets && res.assets[0]) {
         const uri = await keepProjectFile(res.assets[0].uri);
         setPhotoUris(prev => [...prev, uri]);
+        setEditorUri(uri);
+        setEditorPhotoIdx(photoUris.length);
+        setEditorVisible(true);
         setDirty(true);
       }
     } catch (e: any) {

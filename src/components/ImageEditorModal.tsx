@@ -4,6 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { WebView, WebViewMessageEvent } from 'react-native-webview';
 import * as FileSystem from 'expo-file-system/legacy';
+import * as MediaLibrary from 'expo-media-library/legacy';
 
 interface ImageEditorModalProps {
   visible: boolean;
@@ -193,6 +194,7 @@ export default function ImageEditorModal({ visible, imageUri, onSave, onCancel }
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [ready, setReady] = useState(false);
   const [saving, setSaving] = useState(false);
+  const exportTarget = useRef<'sample' | 'gallery' | null>(null);
   const [selectedColor, setSelectedColor] = useState(COLORS[0]);
   const [mode, setMode] = useState<'pen' | 'text'>('pen');
   const [textDialogVisible, setTextDialogVisible] = useState(false);
@@ -205,6 +207,7 @@ export default function ImageEditorModal({ visible, imageUri, onSave, onCancel }
     setImageUrl(null);
     setReady(false);
     setSaving(false);
+    exportTarget.current = null;
     setSelectedColor(COLORS[0]);
     setMode('pen');
     setTextDialogVisible(false);
@@ -228,6 +231,27 @@ export default function ImageEditorModal({ visible, imageUri, onSave, onCancel }
   }, [visible, imageUri]);
 
   const run = (script: string) => webView.current?.injectJavaScript(`${script}; true;`);
+  const exportPhoto = async (target: 'sample' | 'gallery') => {
+    if (!ready || exportTarget.current || !webView.current) return;
+    exportTarget.current = target;
+    setSaving(true);
+    try {
+      if (target === 'gallery') {
+        const permission = await MediaLibrary.requestPermissionsAsync(true, ['photo']);
+        if (!permission.granted) {
+          Alert.alert('Photo permission needed', 'Allow Lynko to save photos in your device settings, then try again.');
+          exportTarget.current = null;
+          setSaving(false);
+          return;
+        }
+      }
+      run('window.exportEditedImage()');
+    } catch (error) {
+      exportTarget.current = null;
+      setSaving(false);
+      Alert.alert('Save failed', 'Could not access your photo gallery. Please try again.');
+    }
+  };
   const addText = () => {
     const value = textInput.trim();
     if (!value || !ready) return;
@@ -243,11 +267,14 @@ export default function ImageEditorModal({ visible, imageUri, onSave, onCancel }
       if (message.type === 'READY') {
         setReady(true);
       } else if (message.type === 'ERROR') {
+        exportTarget.current = null;
         setSaving(false);
         Alert.alert('Photo editor', message.data || 'Could not edit this photo.', !ready ? [
           { text: 'Close', onPress: onCancel },
         ] : undefined);
       } else if (message.type === 'EXPORT_IMAGE') {
+        const target = exportTarget.current;
+        if (!target) return;
         const base64 = String(message.data).replace(/^data:image\/jpeg;base64,/, '');
         if (!FileSystem.documentDirectory || !base64 || base64 === message.data) {
           throw new Error('Edited photo data is unavailable.');
@@ -256,21 +283,32 @@ export default function ImageEditorModal({ visible, imageUri, onSave, onCancel }
         await FileSystem.makeDirectoryAsync(directory, { intermediates: true });
         const uri = `${directory}annotated_${Date.now()}_${Math.random().toString(36).slice(2)}.jpg`;
         await FileSystem.writeAsStringAsync(uri, base64, { encoding: FileSystem.EncodingType.Base64 });
+        if (target === 'gallery') {
+          try {
+            await MediaLibrary.saveToLibraryAsync(uri);
+          } finally {
+            await FileSystem.deleteAsync(uri, { idempotent: true }).catch(() => {});
+          }
+          Alert.alert('Photo saved', 'The photo, including your drawings and text, has been saved to your gallery.');
+        } else {
+          onSave(uri);
+        }
+        exportTarget.current = null;
         setSaving(false);
-        onSave(uri);
       }
     } catch (error) {
       console.error('Photo editor save failed:', error);
+      exportTarget.current = null;
       setSaving(false);
       Alert.alert('Save failed', 'Could not save the edited photo. Please try again.');
     }
   };
 
   return (
-    <Modal visible={visible} animationType="fade" onRequestClose={onCancel}>
+    <Modal visible={visible} animationType="fade" onRequestClose={() => { if (!exportTarget.current) onCancel(); }}>
       <View style={styles.root}>
         <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
-          <TouchableOpacity onPress={onCancel} style={styles.iconButton} accessibilityLabel="Cancel photo editing">
+          <TouchableOpacity onPress={onCancel} disabled={saving} style={styles.iconButton} accessibilityLabel="Cancel photo editing">
             <Ionicons name="close" size={24} color="#FFFFFF" />
           </TouchableOpacity>
           <View style={styles.heading}>
@@ -292,7 +330,7 @@ export default function ImageEditorModal({ visible, imageUri, onSave, onCancel }
             <Ionicons name="trash-outline" size={21} color={ready ? '#FFFFFF' : '#64748B'} />
           </TouchableOpacity>
         </View>
-        <View style={styles.photoArea}>
+        <View style={styles.photoArea} pointerEvents={saving ? 'none' : 'auto'}>
           {webSource && <WebView
             ref={webView}
             source={webSource}
@@ -330,6 +368,7 @@ export default function ImageEditorModal({ visible, imageUri, onSave, onCancel }
             {COLORS.map((color) => (
               <TouchableOpacity
                 key={color}
+                disabled={!ready || saving}
                 onPress={() => { setSelectedColor(color); run(`window.setPenColor(${JSON.stringify(color)})`); }}
                 style={[styles.swatchOuter, selectedColor === color && styles.selectedSwatch]}
                 accessibilityLabel={`Pen color ${color}`}
@@ -339,12 +378,20 @@ export default function ImageEditorModal({ visible, imageUri, onSave, onCancel }
             ))}
           </View>
           <TouchableOpacity
-            onPress={() => { setSaving(true); run('window.exportEditedImage()'); }}
+            onPress={() => exportPhoto('gallery')}
+            disabled={!ready || saving}
+            style={[styles.galleryButton, (!ready || saving) && styles.disabled]}
+            accessibilityLabel="Save photo to gallery"
+          >
+            {saving && exportTarget.current === 'gallery' ? <ActivityIndicator color="#FFFFFF" /> : <><Ionicons name="download-outline" size={20} color="#FFFFFF" /><Text style={styles.toolText}>Save to gallery</Text></>}
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => exportPhoto('sample')}
             disabled={!ready || saving}
             style={[styles.saveButton, (!ready || saving) && styles.disabled]}
             accessibilityLabel="Save edited photo"
           >
-            {saving ? <ActivityIndicator color="#111827" /> : <><Ionicons name="checkmark" size={20} color="#111827" /><Text style={styles.saveText}>Save photo</Text></>}
+            {saving && exportTarget.current === 'sample' ? <ActivityIndicator color="#111827" /> : <><Ionicons name="checkmark" size={20} color="#111827" /><Text style={styles.saveText}>Save photo</Text></>}
           </TouchableOpacity>
         </View>
         {textDialogVisible && (
@@ -382,23 +429,24 @@ const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: '#111827' },
   header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingBottom: 12, gap: 8 },
   iconButton: { width: 42, height: 42, borderRadius: 21, backgroundColor: '#243041', alignItems: 'center', justifyContent: 'center' },
-  heading: { flex: 1, paddingHorizontal: 4 },
+  heading: { flex: 1, minWidth: 0, paddingHorizontal: 4 },
   title: { color: '#FFFFFF', fontSize: 17, fontWeight: '700' },
   subtitle: { color: '#CBD5E1', fontSize: 12, marginTop: 2 },
   photoArea: { flex: 1, backgroundColor: '#0B1220' },
   webView: { flex: 1, backgroundColor: '#0B1220' },
   loading: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, alignItems: 'center', justifyContent: 'center', backgroundColor: '#0B1220' },
-  footer: { paddingHorizontal: 18, paddingTop: 16, gap: 18 },
+  footer: { paddingHorizontal: 16, paddingTop: 12, gap: 12 },
   toolRow: { flexDirection: 'row', gap: 10 },
   toolButton: { minHeight: 42, paddingHorizontal: 16, borderRadius: 10, backgroundColor: '#243041', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
   activeTool: { borderColor: '#FFE600', borderWidth: 1 },
   toolText: { color: '#FFFFFF', fontWeight: '600' },
-  palette: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  palette: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 4 },
   colorLabel: { color: '#CBD5E1', fontSize: 12, fontWeight: '600' },
   swatchOuter: { width: 42, height: 42, borderRadius: 21, alignItems: 'center', justifyContent: 'center' },
   selectedSwatch: { borderWidth: 2, borderColor: '#FFFFFF' },
   swatch: { width: 24, height: 24, borderRadius: 12, borderWidth: 1, borderColor: '#9CA3AF' },
   saveButton: { minHeight: 50, borderRadius: 12, backgroundColor: '#FFE600', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
+  galleryButton: { minHeight: 46, borderRadius: 12, backgroundColor: '#243041', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
   disabled: { opacity: 0.5 },
   saveText: { color: '#111827', fontSize: 16, fontWeight: '700' },
   dialogBackdrop: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, zIndex: 10, backgroundColor: 'rgba(0,0,0,0.72)', alignItems: 'center', justifyContent: 'center', padding: 20 },

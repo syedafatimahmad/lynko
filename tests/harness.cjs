@@ -17,6 +17,7 @@ function harness() {
       return [slots[i], value => { slots[i] = typeof value === 'function' ? value(slots[i]) : value; }];
     },
     useRef: value => { const [ref] = React.useState(() => ({ current: value })); return ref; },
+    useMemo: factory => factory(),
     useEffect: (callback, deps) => {
       const i = cursor++;
       if (!effects[i] || deps.some((d, j) => !Object.is(d, effects[i][j]))) { effects[i] = deps; pending.push(callback); }
@@ -54,10 +55,18 @@ function harness() {
       launchImageLibraryAsync: async () => ({ canceled: false, assets: [{ uri: 'file:///cache/gallery.png' }] }),
     },
     'expo-location': {},
+    'react-native-webview': { WebView: 'WebView' },
+    'expo-media-library/legacy': {
+      requestPermissionsAsync: async (...args) => { h.galleryPermissionArgs = args; return { granted: h.galleryGranted !== false }; },
+      saveToLibraryAsync: async uri => { if (h.galleryFailure) throw Error('Gallery unavailable'); (h.galleryPhotos ||= []).push(uri); },
+    },
     'expo-file-system/legacy': {
       documentDirectory: 'file:///documents/', cacheDirectory: 'file:///cache/',
       getInfoAsync: async uri => ({ exists: uri !== h.missingFile, isDirectory: false, size: h.fileSize }),
       makeDirectoryAsync: async () => {}, copyAsync: async info => h.files.push(info),
+      EncodingType: { Base64: 'base64' }, readAsStringAsync: async () => 'photo-base64',
+      writeAsStringAsync: async (uri, data) => { (h.exportedPhotos ||= []).push({ uri, data }); },
+      deleteAsync: async uri => { (h.deletedFiles ||= []).push(uri); },
     },
     'expo-print': { printToFileAsync: async ({ html }) => { h.printed.push(html); return { uri: 'file:///cache/generated.pdf' }; }, printAsync: async () => {} },
     'expo-mail-composer': { isAvailableAsync: async () => h.mailAvailable,

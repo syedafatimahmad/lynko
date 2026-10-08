@@ -3,7 +3,7 @@
     "name": "Lynko",
     "slug": "lynko",
     "scheme": "lynko",
-    "version": "1.0.11",
+    "version": "1.0.12",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -18,7 +18,7 @@
     },
     "android": {
       "package": "com.lynko.app",
-      "versionCode": 12,
+      "versionCode": 13,
       "googleServicesFile": "./google-services.json",
       "splash": {
         "image": "./assets/splash-icon.png",
@@ -54,6 +54,13 @@
     "plugins": [
       "expo-asset",
       "expo-font",
+      [
+        "expo-media-library",
+        {
+          "savePhotosPermission": "Allow Lynko to save inspection photos to your gallery.",
+          "granularPermissions": ["photo"]
+        }
+      ],
       [
         "expo-camera",
         {

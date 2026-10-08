@@ -71,13 +71,70 @@ test('new sample loop resets fields without creating a blank sample on review', 
   await click(tree, 'Review all samples'); assert.equal(h.state().samples.length, 1); await h.flush();
 });
 
-test('camera photo is attached and durable without having to use markup', async () => {
+test('camera opens markup immediately and cancel keeps the durable original', async () => {
   const h = harness(); await h.state().addProject(project('A'));
   const render = h.mount('SampleLoggerScreen'); await click(render(), 'Take photo'); const tree = render();
   const photo = nodes(tree).find(n => n.type === 'Image');
   assert.ok(photo.props.source.uri.startsWith('file:///documents/inspections/'));
-  assert.equal(nodes(tree).find(n => n.type === 'ImageEditorModal').props.visible, false);
+  const editor = nodes(tree).find(n => n.type === 'ImageEditorModal');
+  assert.equal(editor.props.visible, true);
+  assert.equal(editor.props.imageUri, photo.props.source.uri);
+  editor.props.onCancel();
+  const canceled = render();
+  assert.equal(nodes(canceled).find(n => n.type === 'ImageEditorModal').props.visible, false);
+  assert.equal(nodes(canceled).find(n => n.type === 'Image').props.source.uri, photo.props.source.uri);
   assert.equal(h.preventRemove.dirty, true); await h.flush();
+});
+
+test('saving immediate markup replaces the captured photo without duplicating it', async () => {
+  const h = harness(); await h.state().addProject(project('A')); await h.state().addSample(sample());
+  const render = h.mount('SampleLoggerScreen', { route: { params: { sampleId: 's1' } } });
+  await click(render(), 'Add');
+  const editor = nodes(render()).find(n => n.type === 'ImageEditorModal');
+  editor.props.onSave('file:///documents/inspections/edited.jpg');
+  const photos = nodes(render()).filter(n => n.type === 'Image');
+  assert.equal(photos.length, 2);
+  assert.equal(photos[0].props.source.uri, sample().photoUris[0]);
+  assert.equal(photos[1].props.source.uri, 'file:///documents/inspections/edited.jpg');
+});
+
+async function photoEditor(h) {
+  const render = h.mount('../components/ImageEditorModal', { visible: true, imageUri: 'data:image/jpeg;base64,original', onSave: uri => { h.savedPhoto = uri; }, onCancel() {} });
+  render(); await Promise.resolve();
+  let view = nodes(render()).find(n => n.type === 'WebView');
+  view.props.ref.current = { injectJavaScript: script => { (h.editorScripts ||= []).push(script); } };
+  await view.props.onMessage({ nativeEvent: { data: JSON.stringify({ type: 'READY' }) } });
+  return { render, exportImage: () => view.props.onMessage({ nativeEvent: { data: JSON.stringify({ type: 'EXPORT_IMAGE', data: 'data:image/jpeg;base64,edited-with-markup' }) } }) };
+}
+
+test('gallery exports current markup, cleans the temporary file and leaves editing open', async () => {
+  const h = harness(); const editor = await photoEditor(h);
+  await click(editor.render(), 'Save to gallery');
+  await nodes(editor.render()).find(n => n.props?.accessibilityLabel === 'Save photo to gallery').props.onPress();
+  assert.equal(h.editorScripts.length, 1);
+  assert.deepEqual(JSON.parse(JSON.stringify(h.galleryPermissionArgs)), [true, ['photo']]);
+  await editor.exportImage();
+  assert.equal(h.exportedPhotos[0].data, 'edited-with-markup');
+  assert.equal(h.galleryPhotos[0], h.exportedPhotos[0].uri);
+  assert.equal(h.deletedFiles[0], h.galleryPhotos[0]);
+  assert.equal(h.savedPhoto, undefined);
+  await click(editor.render(), 'Save photo'); await editor.exportImage();
+  assert.ok(h.savedPhoto.endsWith('.jpg'));
+  assert.equal(h.galleryPhotos.length, 1);
+});
+
+test('gallery permission denial and write failure leave sample saving available', async () => {
+  const h = harness(); const editor = await photoEditor(h);
+  h.galleryGranted = false;
+  await click(editor.render(), 'Save to gallery');
+  assert.equal(h.editorScripts, undefined);
+  h.galleryGranted = true; h.galleryFailure = true;
+  await click(editor.render(), 'Save to gallery'); await editor.exportImage();
+  assert.equal(h.galleryPhotos, undefined);
+  assert.equal(h.deletedFiles.length, 1);
+  assert.equal(h.alerts.at(-1)[0], 'Save failed');
+  await click(editor.render(), 'Save photo'); await editor.exportImage();
+  assert.ok(h.savedPhoto);
 });
 
 test('cloud writes save samples inside their owning project, never in the global pool', async () => {
